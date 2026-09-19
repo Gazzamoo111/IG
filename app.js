@@ -123,6 +123,18 @@ function goalButton(value, title, desc) {
   return `<button class="goal-btn" data-goal="${value}"><span class="goal-copy">${title}<small>${desc}</small></span><span class="goal-arrow">›</span></button>`;
 }
 
+function movementPreviewHtml(steps) {
+  if (!Array.isArray(steps) || !steps.length) return "";
+  return `
+    <details class="session-preview">
+      <summary>What's in this session?</summary>
+      <ol>
+        ${steps.map(step => `<li><span>${escapeHtml(step.name)}</span><small>${Number(step.duration_seconds)} sec</small></li>`).join("")}
+      </ol>
+    </details>
+  `;
+}
+
 function renderReady() {
   const goalTitle = {
     loosen_up: "Loosen Up",
@@ -136,7 +148,7 @@ function renderReady() {
   render(`
     <div class="eyebrow">${duration} min · ${goalTitle}</div>
     <h1>Your session is ready.</h1>
-    <p class="lead">One tool. No swapping. Start when you're ready.</p>
+    <p class="lead">MOVA picked this session for you. Start now, or change the time or equipment.</p>
     <div class="card">
       <div class="card-label">Selected equipment</div>
       <div class="equipment-name">${escapeHtml(run.equipment_label)}</div>
@@ -148,14 +160,146 @@ function renderReady() {
         ${stepCount ? `<span class="pill">${stepCount} movements</span>` : ""}
       </div>
     </div>
-    <div class="action-stack">
+
+    ${movementPreviewHtml(run.steps)}
+
+    <div class="action-stack ready-actions">
       <button class="primary-btn" id="start-session">Start session</button>
-      <button class="secondary-btn" id="change-session">Change selection</button>
+      <button class="secondary-btn" id="change-session">Change time or equipment</button>
+      <button class="text-btn" id="change-goal">Change goal</button>
     </div>
   `);
 
   document.getElementById("start-session").addEventListener("click", startSession);
-  document.getElementById("change-session").addEventListener("click", renderTime);
+  document.getElementById("change-session").addEventListener("click", renderSessionOptions);
+  document.getElementById("change-goal").addEventListener("click", renderGoal);
+}
+
+function equipmentOptions() {
+  const available = [];
+  if (kit?.equipment?.bar) available.push(["bar", "MOVA Bar"]);
+  if (kit?.equipment?.handle_band) available.push(["handle_band", "Handle Band"]);
+  if (kit?.equipment?.mini_band) available.push(["mini_band", "Mini Band"]);
+  available.push(["bodyweight", "No Kit"]);
+  return available;
+}
+
+async function renderSessionOptions() {
+  let selectedDuration = duration;
+  let selectedEquipment = run.equipment;
+  let preview = {
+    duration,
+    equipment: run.equipment,
+    equipment_label: run.equipment_label,
+    title: run.title,
+    level: run.level,
+    steps: run.steps || []
+  };
+
+  const goalTitle = {
+    loosen_up: "Loosen Up",
+    get_moving: "Get Moving",
+    get_stronger: "Get Stronger",
+    whole_body: "Whole Body"
+  }[goal];
+
+  function draw() {
+    render(`
+      <div class="eyebrow">${escapeHtml(goalTitle)}</div>
+      <h1>Choose another session.</h1>
+      <p class="lead">Keep the same goal and change the time, the equipment, or both.</p>
+
+      <div class="option-section">
+        <div class="option-label">Time</div>
+        <div class="option-time-grid">
+          ${[3,5,10].map(value => `
+            <button class="option-chip ${selectedDuration===value ? "selected" : ""}" data-option-time="${value}">
+              ${value} min
+            </button>
+          `).join("")}
+        </div>
+      </div>
+
+      <div class="option-section">
+        <div class="option-label">Equipment</div>
+        <div class="option-equipment-grid">
+          ${equipmentOptions().map(([value,label]) => `
+            <button class="option-equipment ${selectedEquipment===value ? "selected" : ""}" data-option-equipment="${value}">
+              <span>${escapeHtml(label)}</span>
+            </button>
+          `).join("")}
+        </div>
+      </div>
+
+      <div id="option-preview">
+        ${previewCard()}
+      </div>
+
+      <div class="action-stack">
+        <button class="primary-btn" id="use-option">Use this session</button>
+        <button class="secondary-btn" id="option-back">Back</button>
+      </div>
+    `);
+
+    document.querySelectorAll("[data-option-time]").forEach(btn => btn.addEventListener("click", async () => {
+      selectedDuration = Number(btn.dataset.optionTime);
+      await refreshPreview();
+    }));
+
+    document.querySelectorAll("[data-option-equipment]").forEach(btn => btn.addEventListener("click", async () => {
+      selectedEquipment = btn.dataset.optionEquipment;
+      await refreshPreview();
+    }));
+
+    document.getElementById("use-option").addEventListener("click", useOption);
+    document.getElementById("option-back").addEventListener("click", renderReady);
+  }
+
+  function previewCard() {
+    return `
+      <div class="option-preview-card">
+        <div class="card-label">Preview</div>
+        <div class="equipment-name">${escapeHtml(preview.equipment_label || "")}</div>
+        <div class="session-title">${escapeHtml(preview.title || "")}</div>
+        <div class="session-meta">
+          <span class="pill">${selectedDuration} min</span>
+          <span class="pill">Level ${preview.level || 1}</span>
+        </div>
+        ${movementPreviewHtml(preview.steps)}
+      </div>
+    `;
+  }
+
+  async function refreshPreview() {
+    render(`<div class="loader-wrap"><div class="loader"></div><div>Loading session…</div></div>`);
+    try {
+      preview = await api("preview_session", {
+        duration: selectedDuration,
+        goal,
+        equipment: selectedEquipment
+      });
+      draw();
+    } catch (error) {
+      showError(error.message);
+    }
+  }
+
+  async function useOption() {
+    render(`<div class="loader-wrap"><div class="loader"></div><div>Building your session…</div></div>`);
+    try {
+      duration = selectedDuration;
+      run = await api("select_goal", {
+        duration,
+        goal,
+        equipment: selectedEquipment
+      });
+      renderReady();
+    } catch (error) {
+      showError(error.message);
+    }
+  }
+
+  draw();
 }
 
 function buildFallbackSequence(minutes) {
