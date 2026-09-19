@@ -149,12 +149,18 @@ def _set_location(armature, role, frame, location):
 
 
 def _frame_cycle(armature, poses, range_scale=1.0):
-    """Key start/middle/end, matching start/end for an almost seamless loop."""
-    start, middle, end = FRAME_START, (FRAME_START + FRAME_END) // 2, FRAME_END
-    for role, start_rotation, middle_rotation in poses:
-        _set_rotation(armature, role, start, start_rotation, range_scale)
-        _set_rotation(armature, role, middle, middle_rotation, range_scale)
-        _set_rotation(armature, role, end, start_rotation, range_scale)
+    """Render two readable repetitions with matching first/last poses."""
+    span = FRAME_END - FRAME_START
+    frames = (
+        FRAME_START,
+        FRAME_START + span // 4,
+        FRAME_START + span // 2,
+        FRAME_START + (span * 3) // 4,
+        FRAME_END,
+    )
+    for role, start_rotation, active_rotation in poses:
+        for frame, rotation in zip(frames, (start_rotation, active_rotation, start_rotation, active_rotation, start_rotation)):
+            _set_rotation(armature, role, frame, rotation, range_scale)
 
 
 def _template_poses(pattern: str):
@@ -185,34 +191,142 @@ def _template_poses(pattern: str):
         "side_reach": [("left_upper_arm", (0, 0, 0), (0, d(-70), 0)), ("spine", (0, 0, 0), (0, 0, d(-22)))],
         "weight_shift": [],
         "combined": common_squat + [("left_upper_arm", (0, 0, 0), (d(-45), 0, 0)), ("right_upper_arm", (0, 0, 0), (d(-45), 0, 0))],
+        "hinge_row": [
+            ("spine", (0, 0, 0), (d(28), 0, 0)),
+            ("left_thigh", (0, 0, 0), (d(-18), 0, 0)), ("right_thigh", (0, 0, 0), (d(-18), 0, 0)),
+            ("left_upper_arm", (0, 0, 0), (d(-18), 0, 0)), ("right_upper_arm", (0, 0, 0), (d(-18), 0, 0)),
+            ("left_forearm", (0, 0, 0), (d(-78), 0, 0)), ("right_forearm", (0, 0, 0), (d(-78), 0, 0)),
+        ],
+        "squat_curl": common_squat + [
+            ("left_forearm", (0, 0, 0), (d(-100), 0, 0)), ("right_forearm", (0, 0, 0), (d(-100), 0, 0)),
+        ],
+        "squat_reach": common_squat + [
+            ("left_upper_arm", (0, 0, 0), (d(-70), 0, 0)), ("right_upper_arm", (0, 0, 0), (d(-70), 0, 0)),
+        ],
+        "squat_side_step": common_squat,
+        "wide_march": [],
+        "split_shift": [],
+        "heel_toe": [],
     }
     return templates.get(pattern, templates["weight_shift"])
 
 
-def _locomotion(armature, pattern: str, range_scale: float):
-    start, middle, end = FRAME_START, (FRAME_START + FRAME_END) // 2, FRAME_END
+def _locomotion(armature, pattern: str, range_scale: float, variant: str = "standard"):
+    """Add root/leg motion for locomotion and balance patterns.
+
+    Five keys create two alternating actions where appropriate, while start
+    and end match for a clean loop.
+    """
+    span = FRAME_END - FRAME_START
+    f0 = FRAME_START
+    f1 = FRAME_START + span // 4
+    f2 = FRAME_START + span // 2
+    f3 = FRAME_START + (span * 3) // 4
+    f4 = FRAME_END
     d = math.radians
+    rs = range_scale
+
     if pattern == "calf_raise":
-        _set_location(armature, "root", start, (0, 0, 0)); _set_location(armature, "root", middle, (0, 0, 0.10 * range_scale)); _set_location(armature, "root", end, (0, 0, 0))
-    elif pattern in {"lateral_step", "lateral_tap", "hip_abduction", "monster_walk"}:
-        _set_location(armature, "root", start, (0, 0, 0)); _set_location(armature, "root", middle, (0.42 * range_scale, 0, 0)); _set_location(armature, "root", end, (0, 0, 0))
-        _set_rotation(armature, "left_thigh", middle, (d(-25), 0, 0), range_scale)
-    elif pattern in {"march", "step_back"}:
-        _set_location(armature, "root", start, (0, 0, 0)); _set_location(armature, "root", middle, (0, -0.22 * range_scale, 0)); _set_location(armature, "root", end, (0, 0, 0))
-        _set_rotation(armature, "left_thigh", middle, (d(-42), 0, 0), range_scale)
-    elif pattern == "weight_shift":
-        _set_location(armature, "root", start, (0, 0, 0)); _set_location(armature, "root", middle, (0.20 * range_scale, 0, 0)); _set_location(armature, "root", end, (0, 0, 0))
+        for frame, z in ((f0, 0), (f1, .09*rs), (f2, 0), (f3, .09*rs), (f4, 0)):
+            _set_location(armature, "root", frame, (0, 0, z))
+        return
 
+    if pattern == "heel_toe":
+        for frame, pitch in ((f0, 0), (f1, d(10)*rs), (f2, 0), (f3, -d(7)*rs), (f4, 0)):
+            _set_rotation(armature, "left_shin", frame, (pitch, 0, 0))
+            _set_rotation(armature, "right_shin", frame, (pitch, 0, 0))
+        return
 
-def create_template_motion(armature, movement_pattern: str, range_scale: float = 1.0):
+    if pattern in {"lateral_step", "lateral_tap", "hip_abduction"}:
+        distance = (.34 if pattern == "lateral_step" else .20) * rs
+        for frame, x in ((f0, 0), (f1, distance), (f2, 0), (f3, -distance), (f4, 0)):
+            _set_location(armature, "root", frame, (x if pattern == "lateral_step" else 0, 0, 0))
+        leg_angle = d(28 if pattern == "hip_abduction" else 18) * rs
+        _set_rotation(armature, "left_thigh", f1, (0, leg_angle, 0))
+        _set_rotation(armature, "left_thigh", f2, (0, 0, 0))
+        _set_rotation(armature, "right_thigh", f3, (0, -leg_angle, 0))
+        _set_rotation(armature, "right_thigh", f4, (0, 0, 0))
+        return
+
+    if pattern in {"march", "wide_march"}:
+        lift = d(44 if variant == "standard" else 25) * rs
+        _set_rotation(armature, "left_thigh", f0, (0, 0, 0))
+        _set_rotation(armature, "left_thigh", f1, (-lift, 0, 0))
+        _set_rotation(armature, "left_thigh", f2, (0, 0, 0))
+        _set_rotation(armature, "right_thigh", f2, (0, 0, 0))
+        _set_rotation(armature, "right_thigh", f3, (-lift, 0, 0))
+        _set_rotation(armature, "right_thigh", f4, (0, 0, 0))
+        if pattern == "wide_march":
+            for frame, x in ((f0,0),(f1,-.06*rs),(f2,0),(f3,.06*rs),(f4,0)):
+                _set_location(armature, "root", frame, (x,0,0))
+        return
+
+    if pattern == "step_back":
+        angle = d(28 if variant == "standard" else 16) * rs
+        _set_rotation(armature, "left_thigh", f1, (angle, 0, 0))
+        _set_rotation(armature, "left_thigh", f2, (0, 0, 0))
+        _set_rotation(armature, "right_thigh", f3, (angle, 0, 0))
+        _set_rotation(armature, "right_thigh", f4, (0, 0, 0))
+        return
+
+    if pattern == "monster_walk":
+        distance = .18 * rs
+        for frame, y in ((f0,0),(f1,-distance),(f2,0),(f3,distance),(f4,0)):
+            _set_location(armature, "root", frame, (0,y,0))
+        _set_rotation(armature, "left_thigh", f1, (-d(18)*rs, d(9)*rs, 0))
+        _set_rotation(armature, "right_thigh", f3, (-d(18)*rs, -d(9)*rs, 0))
+        return
+
+    if pattern == "split_shift":
+        amount = .14 * rs
+        for frame, y in ((f0,0),(f1,-amount),(f2,0),(f3,amount),(f4,0)):
+            _set_location(armature, "root", frame, (0,y,0))
+        return
+
+    if pattern == "weight_shift":
+        amount = .14 * rs
+        for frame, x in ((f0,0),(f1,amount),(f2,0),(f3,-amount),(f4,0)):
+            _set_location(armature, "root", frame, (x,0,0))
+        return
+
+    if pattern == "squat_side_step":
+        amount = .24 * rs
+        for frame, x in ((f0,0),(f1,amount),(f2,0),(f3,-amount),(f4,0)):
+            _set_location(armature, "root", frame, (x,0,0))
+
+def create_template_motion(
+    armature,
+    movement_pattern: str,
+    range_scale: float = 1.0,
+    *,
+    movement_code: str = "",
+    variant: str = "standard",
+):
     pattern = normalise_pattern(movement_pattern)
     if armature.animation_data:
         armature.animation_data_clear()
-    _frame_cycle(armature, _template_poses(pattern), range_scale)
-    _locomotion(armature, pattern, range_scale)
+
+    # Easier squat-pulse is a quarter-squat hold, not a smaller pulse.
+    if pattern == "squat_pulse" and variant == "easier":
+        hold = _template_poses("squat")
+        span = FRAME_END - FRAME_START
+        enter, leave = FRAME_START + span // 8, FRAME_END - span // 8
+        for role, neutral, active in hold:
+            _set_rotation(armature, role, FRAME_START, neutral, range_scale * .45)
+            _set_rotation(armature, role, enter, active, range_scale * .45)
+            _set_rotation(armature, role, leave, active, range_scale * .45)
+            _set_rotation(armature, role, FRAME_END, neutral, range_scale * .45)
+    else:
+        _frame_cycle(armature, _template_poses(pattern), range_scale)
+
+    _locomotion(armature, pattern, range_scale, variant)
+
     action = armature.animation_data.action if armature.animation_data else None
     if action:
         for curve in action.fcurves:
             for key in curve.keyframe_points:
                 key.interpolation = "BEZIER"
+    armature["mova_movement_code"] = movement_code
+    armature["mova_variant"] = variant
+    armature["mova_pattern"] = pattern
     return armature
