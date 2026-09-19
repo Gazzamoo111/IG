@@ -65,16 +65,31 @@ def resolve_override(pattern: str, variant: str) -> MovementOverride:
     return MovementOverride(**values.get(pattern, dict(range_scale=.65, note="reduced range with stable stance")))
 
 
-def _scale_action_range(armature, scale: float) -> None:
-    """Safely soften imported FBX rotations; template range is set upstream.
+def _action_fcurves(armature):
+    """Return F-curves from Blender 5.x Actions, with legacy fallback."""
+    animation_data = armature.animation_data if armature else None
+    action = animation_data.action if animation_data else None
+    if not action:
+        return []
+    # Blender 5.0 removed Action.fcurves. Curves now live in a channelbag
+    # associated with the action slot.
+    slot = getattr(animation_data, "action_slot", None)
+    if slot and getattr(action, "layers", None):
+        try:
+            strip = action.layers[0].strips[0]
+            bag = strip.channelbag(slot, ensure=False)
+            if bag:
+                return list(bag.fcurves)
+        except (AttributeError, IndexError, TypeError):
+            pass
+    return list(getattr(action, "fcurves", []))
 
-    Values are scaled only for rotation curves and only around zero/rest, which
-    avoids turning an easier variant into a time-stretched duplicate.
-    """
-    action = armature.animation_data.action if armature and armature.animation_data else None
-    if not action or scale >= .999:
+
+def _scale_action_range(armature, scale: float) -> None:
+    """Safely soften imported FBX rotations; template range is set upstream."""
+    if scale >= .999:
         return
-    for curve in action.fcurves:
+    for curve in _action_fcurves(armature):
         if not curve.data_path.endswith("rotation_euler"):
             continue
         for key in curve.keyframe_points:
