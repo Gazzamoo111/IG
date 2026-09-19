@@ -57,7 +57,7 @@ function showError(message) {
 }
 
 function escapeHtml(value) {
-  return String(value).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  return String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
 
 async function boot() {
@@ -131,6 +131,8 @@ function renderReady() {
     whole_body: "Whole Body"
   }[goal];
 
+  const stepCount = Array.isArray(run.steps) && run.steps.length ? run.steps.length : null;
+
   render(`
     <div class="eyebrow">${duration} min · ${goalTitle}</div>
     <h1>Your session is ready.</h1>
@@ -143,6 +145,7 @@ function renderReady() {
         <span class="pill">${duration} min</span>
         <span class="pill">Level ${run.level}</span>
         <span class="pill">One tool</span>
+        ${stepCount ? `<span class="pill">${stepCount} movements</span>` : ""}
       </div>
     </div>
     <div class="action-stack">
@@ -155,26 +158,58 @@ function renderReady() {
   document.getElementById("change-session").addEventListener("click", renderTime);
 }
 
-function buildSequence(minutes) {
-  const count = minutes === 3 ? 3 : minutes === 5 ? 4 : 6;
-  const transitionCount = count - 1;
-  const transitionSeconds = 3;
-  const activeTotal = (minutes * 60) - (transitionCount * transitionSeconds);
+function buildFallbackSequence(minutes) {
+  const count = minutes === 3 ? 4 : minutes === 5 ? 5 : 10;
+  const transition = minutes === 3 ? 2 : 3;
+  const transitionTotal = transition * (count - 1);
+  const activeTotal = (minutes * 60) - transitionTotal;
   const base = Math.floor(activeTotal / count);
   let remainder = activeTotal - (base * count);
 
   return Array.from({ length: count }, (_, i) => ({
     id: i + 1,
     label: `Movement ${String(i + 1).padStart(2, "0")}`,
+    cue: "Move with control.",
+    easierLabel: `Easier Movement ${String(i + 1).padStart(2, "0")}`,
+    easierCue: "Use a smaller comfortable range.",
     altLabel: `Alternate ${String(i + 1).padStart(2, "0")}`,
-    seconds: base + (remainder-- > 0 ? 1 : 0)
+    altCue: "Use the alternate movement.",
+    seconds: base + (remainder-- > 0 ? 1 : 0),
+    transition: i === count - 1 ? 0 : transition,
+    demo: null,
+    easierDemo: null,
+    altDemo: null
   }));
+}
+
+function sequenceFromRun() {
+  if (!run?.content_ready || !Array.isArray(run.steps) || !run.steps.length) {
+    return buildFallbackSequence(duration);
+  }
+  return run.steps.map((step, index) => ({
+    id: step.order || index + 1,
+    label: step.name,
+    cue: step.cue || "",
+    easierLabel: step.easier_name || null,
+    easierCue: step.easier_cue || null,
+    altLabel: step.alternate?.name || null,
+    altCue: step.alternate?.cue || null,
+    seconds: Number(step.duration_seconds),
+    transition: Number(step.transition_seconds || 0),
+    demo: step.demo_asset_url || null,
+    easierDemo: step.easier_demo_asset_url || null,
+    altDemo: step.alternate?.demo_asset_url || null
+  }));
+}
+
+function totalSessionSeconds() {
+  return sequence.reduce((sum, step) => sum + step.seconds + step.transition, 0);
 }
 
 async function startSession() {
   try {
     await api("session_started", { run_id: run.run_id });
-    sequence = buildSequence(duration);
+    sequence = sequenceFromRun();
     currentIndex = 0;
     elapsedSeconds = 0;
     paused = false;
@@ -208,9 +243,15 @@ function beginMovement(index) {
 }
 
 function beginTransition() {
+  const transition = sequence[currentIndex].transition || 0;
+  if (transition <= 0) {
+    beginMovement(currentIndex + 1);
+    return;
+  }
   phase = "transition";
-  phaseSeconds = 3;
+  phaseSeconds = transition;
   easier = false;
+  alternateVersion = 0;
   vibrate([40, 35, 40]);
   updatePlayerUI();
 }
@@ -242,7 +283,6 @@ function tickPlayer() {
         beginTransition();
         return;
       }
-
       beginMovement(currentIndex + 1);
       return;
     }
@@ -262,13 +302,7 @@ function renderPlayerShell() {
 
       <div class="player-stage equipment-${escapeHtml(run.equipment)}" id="player-stage">
         <div class="timer" id="movement-timer"></div>
-        <div class="stage-demo" id="stage-demo">
-          <div class="equipment-mark" aria-hidden="true">
-            <span></span><span></span><span></span>
-          </div>
-          <div class="demo-kicker" id="demo-kicker">PLAYER PROTOTYPE</div>
-          <div class="demo-copy" id="demo-copy">Movement demo will play here.</div>
-        </div>
+        <div class="stage-demo" id="stage-demo"></div>
         <div class="stage-badge" id="stage-badge">STANDARD</div>
       </div>
 
@@ -290,11 +324,50 @@ function renderPlayerShell() {
   document.getElementById("skip-btn").addEventListener("click", skipMovement);
 }
 
+function variantFor(movement) {
+  if (alternateVersion && movement.altLabel) {
+    return {
+      label: movement.altLabel,
+      cue: movement.altCue || movement.cue,
+      demo: movement.altDemo || null,
+      badge: "ALTERNATE"
+    };
+  }
+  if (easier && movement.easierLabel) {
+    return {
+      label: movement.easierLabel,
+      cue: movement.easierCue || movement.cue,
+      demo: movement.easierDemo || movement.demo || null,
+      badge: "EASIER"
+    };
+  }
+  return {
+    label: movement.label,
+    cue: movement.cue,
+    demo: movement.demo,
+    badge: "STANDARD"
+  };
+}
+
+function renderStageMedia(movement, variant) {
+  const stage = document.getElementById("stage-demo");
+  if (!stage) return;
+  if (variant.demo) {
+    stage.innerHTML = `<video class="movement-video" src="${escapeHtml(variant.demo)}" autoplay muted loop playsinline preload="auto"></video>`;
+    return;
+  }
+  stage.innerHTML = `
+    <div class="equipment-mark" aria-hidden="true"><span></span><span></span><span></span></div>
+    <div class="demo-kicker">MOVEMENT DEMO</div>
+    <div class="demo-copy">${escapeHtml(variant.label)}<br><span style="color:#747b7e">Video asset pending</span></div>
+  `;
+}
+
 function updatePlayerUI() {
   const meta = document.getElementById("player-meta");
   if (!meta) return;
 
-  const totalSeconds = duration * 60;
+  const totalSeconds = totalSessionSeconds() || duration * 60;
   const overallRemaining = Math.max(0, totalSeconds - elapsedSeconds);
   const progress = Math.min(100, (elapsedSeconds / totalSeconds) * 100);
   const movement = sequence[currentIndex];
@@ -302,16 +375,15 @@ function updatePlayerUI() {
   document.getElementById("progress-fill").style.width = progress + "%";
   document.getElementById("overall-remaining").textContent = formatTime(overallRemaining);
   document.getElementById("pause-btn").textContent = paused ? "Resume" : "Pause";
-  document.getElementById("easier-btn").textContent = easier ? "Standard" : "Easier";
 
   if (phase === "prestart") {
     meta.textContent = `${duration} MIN · ${run.equipment_label}`;
     document.getElementById("movement-timer").innerHTML = `<strong>${phaseSeconds}</strong>`;
     document.getElementById("movement-title").textContent = "Get ready";
     document.getElementById("movement-cue").textContent = "Set your equipment. Make sure you have clear space.";
-    document.getElementById("demo-kicker").textContent = "STARTING";
-    document.getElementById("demo-copy").textContent = "Your session begins in a moment.";
+    document.getElementById("stage-demo").innerHTML = `<div class="demo-kicker">STARTING</div><div class="demo-copy">Your session begins in a moment.</div>`;
     document.getElementById("stage-badge").textContent = "READY";
+    document.getElementById("easier-btn").textContent = "Easier";
     setControlsDisabled(true);
     return;
   }
@@ -322,26 +394,26 @@ function updatePlayerUI() {
     document.getElementById("movement-timer").innerHTML = `<strong>${phaseSeconds}</strong><small>NEXT</small>`;
     document.getElementById("movement-title").textContent = "Next up";
     document.getElementById("movement-cue").textContent = next.label;
-    document.getElementById("demo-kicker").textContent = "TRANSITION";
-    document.getElementById("demo-copy").textContent = "Keep the same equipment. No swapping.";
+    document.getElementById("stage-demo").innerHTML = `<div class="demo-kicker">TRANSITION</div><div class="demo-copy">Keep the same equipment. No swapping.</div>`;
     document.getElementById("stage-badge").textContent = "NEXT";
+    document.getElementById("easier-btn").textContent = "Easier";
     setControlsDisabled(true);
     return;
   }
 
-  setControlsDisabled(false);
-  const displayLabel = alternateVersion ? movement.altLabel : movement.label;
+  const variant = variantFor(movement);
   meta.textContent = `${currentIndex + 1} / ${sequence.length} · ${run.equipment_label}`;
   document.getElementById("movement-timer").innerHTML = `<strong>${phaseSeconds}</strong><small>SEC</small>`;
-  document.getElementById("movement-title").textContent = displayLabel;
-  document.getElementById("movement-cue").textContent = easier
-    ? "Easier option active. Keep the movement comfortable and controlled."
-    : "Standard option. Follow the demo and move with control.";
-  document.getElementById("demo-kicker").textContent = "MOVEMENT DEMO";
-  document.getElementById("demo-copy").textContent = alternateVersion
-    ? "Alternate movement will replace the original here."
-    : "Final exercise video will play here.";
-  document.getElementById("stage-badge").textContent = easier ? "EASIER" : "STANDARD";
+  document.getElementById("movement-title").textContent = variant.label;
+  document.getElementById("movement-cue").textContent = variant.cue || "Move with control.";
+  document.getElementById("stage-badge").textContent = variant.badge;
+  document.getElementById("easier-btn").textContent = easier ? "Standard" : "Easier";
+  renderStageMedia(movement, variant);
+
+  const easierBtn = document.getElementById("easier-btn");
+  const skipBtn = document.getElementById("skip-btn");
+  easierBtn.disabled = !movement.easierLabel || alternateVersion > 0;
+  skipBtn.disabled = !movement.altLabel || alternateVersion > 0;
 }
 
 function setControlsDisabled(disabled) {
@@ -353,6 +425,8 @@ function setControlsDisabled(disabled) {
 
 function toggleEasier() {
   if (phase !== "work") return;
+  const movement = sequence[currentIndex];
+  if (!movement.easierLabel || alternateVersion) return;
   easier = !easier;
   updatePlayerUI();
 }
@@ -366,13 +440,15 @@ function togglePause() {
 function skipMovement() {
   if (phase !== "work") return;
   const current = sequence[currentIndex];
+  if (!current.altLabel || alternateVersion) return;
+
   api("movement_skipped", {
     run_id: run.run_id,
     movement_index: currentIndex + 1,
-    movement_label: alternateVersion ? current.altLabel : current.label
+    movement_label: current.label
   }).catch(() => {});
 
-  alternateVersion += 1;
+  alternateVersion = 1;
   easier = false;
   vibrate(30);
   updatePlayerUI();
@@ -381,7 +457,7 @@ function skipMovement() {
 async function completeSession() {
   clearPlayerTimer();
   phase = "complete";
-  elapsedSeconds = duration * 60;
+  elapsedSeconds = totalSessionSeconds() || duration * 60;
   updatePlayerUI();
   await releaseWakeLock();
 
@@ -455,15 +531,11 @@ function resetPlayerState() {
 
 async function requestWakeLock() {
   if (!("wakeLock" in navigator)) return;
-  try {
-    wakeLock = await navigator.wakeLock.request("screen");
-  } catch (_) {}
+  try { wakeLock = await navigator.wakeLock.request("screen"); } catch (_) {}
 }
 
 async function releaseWakeLock() {
-  try {
-    if (wakeLock) await wakeLock.release();
-  } catch (_) {}
+  try { if (wakeLock) await wakeLock.release(); } catch (_) {}
   wakeLock = null;
 }
 
