@@ -48,3 +48,61 @@ letter-spacing:.06em}.tag.draft{color:#d3d6d7}.tag.approved{color:var(--lime)}.e
 .grid-2,.grid-3{grid-template-columns:1fr}.metric{min-height:104px}.metric-value{font-size:29px}.admin-shell{grid-template-columns:1fr}.sidebar{display:flex;overflow:auto;
 border-right:0;border-bottom:1px solid var(--line);padding:10px}.nav-btn{width:auto;white-space:nowrap;margin:0 3px}.admin-main{padding:20px 16px}.cards,.content-grid,.equipment-specs{grid-template-columns:1fr}
 .top-actions .desktop-only{display:none}.mix-row{grid-template-columns:100px 1fr 36px}}
+
+/* Content builder */
+.admin-header-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.content-toolbar{display:flex;gap:8px;margin-top:24px;flex-wrap:wrap}
+.tab-pill{border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:999px;padding:10px 14px;font-weight:800;cursor:pointer}
+.tab-pill.active{background:var(--lime);border-color:var(--lime);color:#0c0d0e}
+.filter-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.filter-row select,.builder select,.builder input,.builder textarea{
+  width:100%;background:#111315;border:1px solid var(--line);color:var(--text);border-radius:12px;
+  padding:10px 11px;outline:none
+}
+.filter-row select{width:auto;min-width:150px}
+.session-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.session-card,.movement-card{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:18px;padding:16px;text-align:left;cursor:pointer}
+.session-card:hover,.movement-card:hover{border-color:#4b5357}
+.session-card h3,.movement-card h3{font-size:15px;margin:8px 0 10px}
+.session-card .code,.movement-card .code{font-size:10px;color:#777e81;font-weight:800;letter-spacing:.08em}
+.session-card-foot{display:flex;justify-content:space-between;margin-top:14px;color:var(--muted);font-size:11px}
+.builder{border:1px solid var(--line);background:var(--panel);border-radius:22px;padding:18px}
+.builder-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+.builder-total{padding:9px 12px;border-radius:999px;border:1px solid var(--line);font-size:11px;font-weight:850}
+.builder-total.good{color:var(--lime)}.builder-total.bad{color:var(--danger)}
+.builder-meta{display:grid;gap:12px;margin-bottom:16px}
+.builder-meta label,.editor-grid label{display:grid;gap:7px;color:var(--muted);font-size:11px;font-weight:750}
+.builder-meta-readonly{display:flex;gap:7px;flex-wrap:wrap}
+.builder-meta-readonly span{padding:6px 8px;border:1px solid var(--line);border-radius:999px;color:#b5babc;font-size:10px}
+.builder-table{display:grid;gap:7px}
+.builder-row{display:grid;grid-template-columns:34px minmax(170px,1.4fr) 90px 100px minmax(170px,1.2fr) 118px;gap:8px;align-items:center}
+.builder-row-head{color:#7f8689;font-size:9px;text-transform:uppercase;letter-spacing:.08em;padding:0 2px}
+.step-num{font-weight:850;color:var(--muted);text-align:center}
+.row-actions{display:flex;gap:5px}
+.row-actions button{width:34px;height:34px;border:1px solid var(--line);border-radius:10px;background:#111315;color:var(--text);cursor:pointer}
+.builder-actions{display:flex;justify-content:flex-end;gap:9px;margin:16px 0}
+.movement-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.movement-card p{font-size:12px;line-height:1.45;color:var(--muted);min-height:34px}
+.editor-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.editor-grid label.wide{grid-column:1/-1}
+.editor-grid textarea{min-height:90px;resize:vertical}
+.movement-video{width:100%;height:100%;object-fit:cover}
+@media(max-width:1100px){
+  .session-grid,.movement-grid{grid-template-columns:repeat(2,1fr)}
+  .builder-row{grid-template-columns:32px minmax(150px,1fr) 75px 90px minmax(145px,1fr) 108px}
+}
+@media(max-width:760px){
+  .session-grid,.movement-grid,.editor-grid{grid-template-columns:1fr}
+  .builder{padding:13px}
+  .builder-row-head{display:none}
+  .builder-row{grid-template-columns:28px 1fr 72px;grid-template-areas:
+    "num movement actions"
+    ". work transition"
+    ". alternate alternate";padding:10px 0;border-bottom:1px solid var(--line)}
+  .builder-row .step-num{grid-area:num}
+  .builder-row select[data-field="movement_code"]{grid-area:movement}
+  .builder-row input[data-field="duration_seconds"]{grid-area:work}
+  .builder-row input[data-field="transition_seconds"]{grid-area:transition}
+  .builder-row select[data-field="alternate_movement_code"]{grid-area:alternate}
+  .builder-row .row-actions{grid-area:actions}
+}
