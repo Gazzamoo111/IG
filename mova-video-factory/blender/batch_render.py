@@ -141,15 +141,27 @@ def run():
             print(f"[{index}/{len(jobs)}] PLAN {job['movement_code']}:{job['variant']}")
             continue
         print(f"[{index}/{len(jobs)}] RENDER {job['movement_code']}:{job['variant']}")
-        completed = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-        status = "complete" if completed.returncode == 0 and valid_clip(destination) else "failed"
-        outcomes.append(report_row(job, status, completed.stdout))
+        process = subprocess.Popen(
+            command,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            bufsize=1,
+        )
+        captured = []
+        assert process.stdout is not None
+        for line in process.stdout:
+            print(line, end="", flush=True)
+            captured.append(line)
+            if len(captured) > 300:
+                captured = captured[-300:]
+        returncode = process.wait()
+        detail = "".join(captured)
+        status = "complete" if returncode == 0 and valid_clip(destination) else "failed"
+        outcomes.append(report_row(job, status, detail))
         append_report([outcomes[-1]])
         if status == "failed":
             print(f"  FAILED; continuing. See {BATCH_REPORT}")
-            print("----- Blender error -----")
-            print((completed.stdout or "").strip())
-            print("-------------------------")
 
     # Dry runs/skips may not have been persisted one-by-one.
     persisted = [row for row in outcomes if row["status"] in {"planned", "skipped_complete"}]
