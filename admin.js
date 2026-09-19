@@ -471,7 +471,7 @@ function mediaVariantHtml(m,a,label,displayName){
       <span class="media-status ${esc(status)}">${esc(status)}</span>
     </div>
 
-    ${a.public_url ? `<div class="media-preview"><video src="${esc(a.public_url)}" muted loop playsinline controls></video></div>` : ""}
+    ${a.public_url ? `<div class="media-preview">${a.public_url.includes("/media/motion.html") ? `<iframe class="media-motion-frame" src="${esc(a.public_url)}" title="${esc(displayName)}"></iframe>` : `<video src="${esc(a.public_url)}" muted loop playsinline controls></video>`}</div>` : ""}
 
     <div class="media-upload-row" style="margin-top:10px">
       <input type="file" accept="video/mp4,video/webm,video/quicktime">
