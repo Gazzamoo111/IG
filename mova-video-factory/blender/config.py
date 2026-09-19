@@ -21,7 +21,7 @@ BATCH_REPORT = MOTION_DIR / "blender_batch_report.csv"
 # A compact, 4:5, deliberately plain control video.  WAN may crop/scale this
 # but its camera framing remains consistent between all movements.
 FPS = 30
-DURATION_SECONDS = 8
+DURATION_SECONDS = 6
 FRAME_START = 1
 FRAME_END = FPS * DURATION_SECONDS
 RESOLUTION_X = 720
