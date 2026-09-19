@@ -18,7 +18,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from config import BATCH_REPORT, MOVEMENT_MANIFEST, MOTION_MANIFEST, driving_output_path, normalise_equipment, normalise_pattern
+from config import BATCH_REPORT, MOVEMENT_MANIFEST, MOTION_MANIFEST, driving_output_path, mixamo_source_for_movement, normalise_equipment, normalise_pattern
 
 
 def read_rows(path: Path):
@@ -34,16 +34,27 @@ def resolve_jobs(rows):
             continue
         variants = [row.get("variant", "").strip().lower()] if row.get("variant", "").strip().lower() in {"standard", "easier"} else ["standard", "easier"]
         for variant in variants:
+            mapped = mixamo_source_for_movement(code)
             motion_source = (row.get("motion_source") or "").strip()
             source_path = (row.get(f"{variant}_source_path") or row.get("motion_source_path") or row.get("source_path") or "").strip()
             source_type = (row.get(f"{variant}_source_type") or row.get("source_type") or "").strip().lower()
-            if not source_type and motion_source.lower().endswith(".fbx"):
-                source_type, source_path = "fbx", source_path or motion_source
-            source_type = source_type or "template"
-            if source_type in {"manual", "keyframe", "procedural"}:
-                source_type = "template"
-            if source_type not in {"template", "fbx", "mixamo"}:
-                source_type = "template"
+            pattern = normalise_pattern(row.get("movement_pattern"))
+            if mapped:
+                source_type = mapped["source_type"]
+                source_path = mapped["source_path"]
+                pattern = mapped["pattern"]
+                source_filename = mapped["source_filename"]
+                source_mode = mapped["source_mode"]
+            else:
+                if not source_type and motion_source.lower().endswith(".fbx"):
+                    source_type, source_path = "fbx", source_path or motion_source
+                source_type = source_type or "template"
+                if source_type in {"manual", "keyframe", "procedural"}:
+                    source_type = "template"
+                if source_type not in {"template", "fbx", "mixamo"}:
+                    source_type = "template"
+                source_filename = Path(source_path).name if source_path else ""
+                source_mode = "manifest_fallback"
             equipment = normalise_equipment(row.get("equipment"))
             output_value = row.get("driving_video_path") or str(driving_output_path(equipment, code, variant))
             output = Path(output_value).expanduser()
@@ -51,11 +62,13 @@ def resolve_jobs(rows):
                 output = MOVEMENT_MANIFEST.parent / output
             jobs.append({
                 "movement_code": code,
-                "pattern": normalise_pattern(row.get("movement_pattern")),
+                "pattern": pattern,
                 "equipment": equipment,
                 "variant": variant,
                 "source_type": source_type,
                 "source_path": source_path,
+                "source_filename": source_filename,
+                "source_mode": source_mode,
                 "output": str(output),
             })
     return jobs
@@ -72,7 +85,7 @@ def report_row(job, status, detail=""):
 def append_report(rows):
     BATCH_REPORT.parent.mkdir(parents=True, exist_ok=True)
     new_file = not BATCH_REPORT.exists()
-    fieldnames = ["movement_code", "pattern", "equipment", "variant", "source_type", "source_path", "output", "status", "detail", "timestamp_utc"]
+    fieldnames = ["movement_code", "pattern", "equipment", "variant", "source_type", "source_filename", "source_mode", "source_path", "output", "status", "detail", "timestamp_utc"]
     with BATCH_REPORT.open("a", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         if new_file:

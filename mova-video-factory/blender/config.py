@@ -14,6 +14,7 @@ MOTION_DIR = FACTORY_DIR / "motion"
 MOTION_SOURCE_DIR = MOTION_DIR / "source"
 DRIVING_DIR = MOTION_DIR / "processed"
 MOTION_MANIFEST = MOTION_DIR / "motion_manifest.csv"
+MIXAMO_MOTION_MAP = MOTION_DIR / "mixamo_motion_map.csv"
 MOVEMENT_MANIFEST = FACTORY_DIR / "movements.csv"
 BATCH_REPORT = MOTION_DIR / "blender_batch_report.csv"
 
@@ -70,6 +71,41 @@ def normalise_pattern(value: str | None) -> str:
         "push": "chest_press",
         "shoulder": "front_raise",
     }.get(pattern, pattern)
+
+
+def mixamo_source_for_movement(movement_code: str) -> dict[str, str] | None:
+    """Resolve the acquisition map without requiring per-row manifest edits.
+
+    A non-empty `source_filename` means the matching FBX belongs in
+    `motion/source/`. `scripted_blender` deliberately routes to the existing
+    deterministic template layer rather than attempting an inappropriate FBX.
+    """
+    if not MIXAMO_MOTION_MAP.exists():
+        return None
+    import csv
+
+    with MIXAMO_MOTION_MAP.open(newline="", encoding="utf-8-sig") as handle:
+        for row in csv.DictReader(handle):
+            if row.get("movement_code", "").strip().upper() != movement_code.strip().upper():
+                continue
+            filename = row.get("source_filename", "").strip()
+            mode = row.get("source_mode", "").strip().lower()
+            if mode == "mixamo" and filename:
+                return {
+                    "source_type": "mixamo",
+                    "source_path": str(MOTION_SOURCE_DIR / filename),
+                    "pattern": normalise_pattern(row.get("blender_pattern")),
+                    "source_filename": filename,
+                    "source_mode": mode,
+                }
+            return {
+                "source_type": "template",
+                "source_path": "",
+                "pattern": normalise_pattern(row.get("blender_pattern")),
+                "source_filename": "",
+                "source_mode": mode or "scripted_blender",
+            }
+    return None
 
 
 def driving_output_path(equipment: str, movement_code: str, variant: str) -> Path:

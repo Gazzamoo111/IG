@@ -3,11 +3,18 @@
 `source/` holds licensed Mixamo FBX files or other approved source motions.
 `processed/` holds rendered Blender driving clips, not final presenter media.
 
-The `motion_manifest.csv` file is a reusable pattern catalogue. The production
-`movements.csv` can set `motion_source` to `template`, `fbx`, or `mixamo`, and
-optionally `motion_source_path`. For every movement the batch renderer creates
-both `standard` and `easier` clips. The easier variant changes range and pattern
-geometry (depth, reach, stance, or step distance), never simply timing.
+`mixamo_motion_map.csv` is the canonical acquisition map. It covers every active
+MOVA movement while requiring only the seven FBX files listed in
+`mixamo_download_list.md`. The Blender batch dispatcher reads this map first:
+place the listed files in `source/` with their exact internal filenames and it
+will select the correct shared FBX automatically. Rows marked
+`source_mode=scripted_blender` intentionally select the deterministic Blender
+template instead—no Mixamo file is required for them.
+
+The `motion_manifest.csv` file is a reusable pattern catalogue. For every
+movement the batch renderer creates both `standard` and `easier` clips. The
+easier variant changes range and pattern geometry (depth, reach, stance, or
+step distance), never simply timing.
 
 To acquire Mixamo sources, download an animation in **FBX Binary** with **Skin**
 from a properly licensed Mixamo/Adobe account and put it below `source/`. Put
