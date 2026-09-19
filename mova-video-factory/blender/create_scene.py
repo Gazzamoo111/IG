@@ -95,11 +95,10 @@ def configure_render() -> None:
     scene.render.resolution_x = RESOLUTION_X
     scene.render.resolution_y = RESOLUTION_Y
     scene.render.resolution_percentage = 100
-    scene.render.image_settings.file_format = "FFMPEG"
-    scene.render.ffmpeg.format = "MPEG4"
-    scene.render.ffmpeg.codec = "H264"
-    scene.render.ffmpeg.constant_rate_factor = "MEDIUM"
-    scene.render.ffmpeg.ffmpeg_preset = "GOOD"
+    # Blender's macOS build may not include FFmpeg output support. Render
+    # deterministic PNG frames here; render_driving_clip.py encodes them with
+    # the system ffmpeg binary installed on the host.
+    scene.render.image_settings.file_format = "PNG"
     scene.render.film_transparent = False
     scene.render.engine = "BLENDER_EEVEE_NEXT"
     scene.render.image_settings.color_mode = "RGB"
