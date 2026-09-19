@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -25,7 +27,7 @@ import bpy
 
 from apply_movement_overrides import apply_imported_motion_override, resolve_override
 from build_mova_props import build_props
-from config import driving_output_path, ensure_directories, normalise_equipment, normalise_pattern
+from config import FPS, driving_output_path, ensure_directories, normalise_equipment, normalise_pattern
 from create_scene import build_base_scene
 from import_motion import create_template_motion, import_or_create
 
@@ -65,7 +67,11 @@ def render_job(args) -> dict:
     build_props(armature, equipment, pattern)
 
     scene = bpy.context.scene
-    scene.render.filepath = str(output)
+    frames_dir = output.parent / f".{output.stem}_frames"
+    if frames_dir.exists():
+        shutil.rmtree(frames_dir)
+    frames_dir.mkdir(parents=True, exist_ok=True)
+    scene.render.filepath = str(frames_dir / "frame_")
     result = {
         "movement_code": args.movement_code,
         "pattern": pattern,
@@ -84,7 +90,29 @@ def render_job(args) -> dict:
         result["blend_file"] = str(save_path)
     if not args.dry_run:
         bpy.ops.render.render(animation=True)
+
+        ffmpeg = shutil.which("ffmpeg")
+        if not ffmpeg:
+            raise RuntimeError("System ffmpeg is required to encode MOVA driving clips")
+
+        command = [
+            ffmpeg, "-y",
+            "-framerate", str(FPS),
+            "-start_number", str(scene.frame_start),
+            "-i", str(frames_dir / "frame_%04d.png"),
+            "-c:v", "libx264",
+            "-pix_fmt", "yuv420p",
+            "-r", str(FPS),
+            "-movflags", "+faststart",
+            str(output),
+        ]
+        encoded = subprocess.run(command, capture_output=True, text=True)
+        if encoded.returncode != 0 or not output.is_file() or output.stat().st_size < 4096:
+            raise RuntimeError("FFmpeg encoding failed:\n" + (encoded.stderr or encoded.stdout)[-4000:])
+
+        shutil.rmtree(frames_dir, ignore_errors=True)
         result["rendered"] = True
+        result["encoder"] = "system_ffmpeg"
     return result
 
 
