@@ -6,5 +6,13 @@
   "staging_output_root": "output",
   "mova_api_endpoint": "",
   "mova_api_key_env": "MOVA_API_KEY",
-  "notes": "No production endpoint or secret is stored in this repository. Configure them at run time."
+  "notes": "Procedural Blender is the default driving-motion source. Mixamo is optional only. No production endpoint or secret is stored in this repository.",
+  "production_mode": "procedural_blender",
+  "driving_video": {
+    "width": 720,
+    "height": 900,
+    "fps": 30,
+    "duration_seconds": 8
+  },
+  "mixamo": "optional_legacy_fallback"
 }
