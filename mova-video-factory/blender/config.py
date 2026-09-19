@@ -20,12 +20,12 @@ BATCH_REPORT = MOTION_DIR / "blender_batch_report.csv"
 
 # A compact, 4:5, deliberately plain control video.  WAN may crop/scale this
 # but its camera framing remains consistent between all movements.
-FPS = 24
+FPS = 30
 DURATION_SECONDS = 8
 FRAME_START = 1
 FRAME_END = FPS * DURATION_SECONDS
-RESOLUTION_X = 768
-RESOLUTION_Y = 960
+RESOLUTION_X = 720
+RESOLUTION_Y = 900
 OUTPUT_EXTENSION = ".mp4"
 
 # Fixed camera.  The target lives around the presenter pelvis; side views are
@@ -73,12 +73,47 @@ def normalise_pattern(value: str | None) -> str:
     }.get(pattern, pattern)
 
 
+def procedural_pattern_for_code(movement_code: str, fallback: str | None = None) -> str:
+    """Return the specific procedural motion family for a MOVA movement code."""
+    code = (movement_code or "").strip().upper()
+    suffix_map = (
+        ("SQUAT_SIDE_STEP", "squat_side_step"),
+        ("SQUAT_REACH", "squat_reach"),
+        ("SQUAT_CURL", "squat_curl"),
+        ("HINGE_ROW", "hinge_row"),
+        ("SQUAT_PULSE", "squat_pulse"),
+        ("HIP_ABDUCTION", "hip_abduction"),
+        ("LATERAL_TAP", "lateral_tap"),
+        ("LATERAL_STEP", "lateral_step"),
+        ("MONSTER_WALK", "monster_walk"),
+        ("WIDE_MARCH", "wide_march"),
+        ("STEP_BACK", "step_back"),
+        ("SPLIT_SHIFT", "split_shift"),
+        ("THORACIC_ROTATION", "rotation"),
+        ("SIDE_REACH", "side_reach"),
+        ("ARM_SWEEP", "arm_sweep"),
+        ("HEEL_TOE_ROCK", "heel_toe"),
+        ("CALF_RAISE", "calf_raise"),
+        ("FRONT_RAISE", "front_raise"),
+        ("REVERSE_FLY", "reverse_fly"),
+        ("CHEST_PRESS", "chest_press"),
+        ("DEADLIFT", "deadlift"),
+        ("HINGE", "hinge"),
+        ("SQUAT", "squat"),
+        ("CURL", "curl"),
+        ("ROW", "row"),
+        ("MARCH", "march"),
+    )
+    for suffix, pattern in suffix_map:
+        if code.endswith(suffix):
+            return pattern
+    return normalise_pattern(fallback)
+
 def mixamo_source_for_movement(movement_code: str) -> dict[str, str] | None:
     """Resolve the acquisition map without requiring per-row manifest edits.
 
-    A non-empty `source_filename` means the matching FBX belongs in
-    `motion/source/`. `scripted_blender` deliberately routes to the existing
-    deterministic template layer rather than attempting an inappropriate FBX.
+    Procedural Blender is the production default. This optional resolver is
+    retained only for an explicit future FBX override.
     """
     if not MIXAMO_MOTION_MAP.exists():
         return None
