@@ -1,0 +1,9 @@
+{
+  "name": "MOVA",
+  "short_name": "MOVA",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0F1011",
+  "theme_color": "#0F1011",
+  "description": "Movement made accessible."
+}
