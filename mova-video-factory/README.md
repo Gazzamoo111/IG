@@ -18,7 +18,7 @@ The factory creates **control assets** first (Blender driving clips), then uses 
 | Input | Location | Notes |
 | --- | --- | --- |
 | Presenter reference | `presenter/presenter.png` | One full-body, neutral-pose PNG for all 86 videos. It is intentionally not committed. |
-| Motion source | `motion/source/` | Optional Mixamo FBX files, named using the motion manifest. |
+| Motion source | Procedural Blender by default | Mixamo FBX files in `motion/source/` are optional legacy/fallback inputs only. |
 | Blender driving clips | `motion/processed/` | Generated MP4 control assets. |
 | Wan2.2 weights | Kaggle/local cache | Obtain from the official Wan2.2 release/license source; do not commit weights. |
 | Canonical MOVA data | Admin endpoint or JSON export | The generated `movements.json` is the immutable build snapshot. |
@@ -61,27 +61,46 @@ mova-video-factory/presenter/presenter.png
 
 Use one approachable, athletic adult (roughly 30–45), full body, black MOVA-style shirt/work pants/trainers, neutral stance, and a dark graphite industrial studio with restrained acid-lime accents. No text, extra people, or changing presenter identities. The pipeline intentionally rejects a run without this exact file.
 
-## 3. Obtain and make driving motion
+## 3. Generate the 86 procedural Blender driving clips
 
-For common movements, download an FBX from [Mixamo](https://www.mixamo.com/) using a compatible human character and the animation named in `motion/motion_manifest.csv`.
+Procedural Blender is the production default. No Mixamo download is required.
 
-1. Sign in to Mixamo and choose an animation that matches the movement pattern rather than merely its title.
-2. Download **FBX for Unity** or a regular FBX at 30 FPS, **without skin** when using the factory rig.
-3. Put it in `motion/source/` and record its filename in `motion/motion_manifest.csv`.
-4. For unsupported movement patterns, use the reusable keyframe templates defined in `blender/config.py`; do not duplicate a full scene per exercise.
-5. Run Blender headlessly to make control clips:
+From `mova-video-factory/`:
 
-   ```bash
-   python3 blender/batch_render.py --manifest movements.csv --max-items 4
-   ```
+```bash
+python3 blender/batch_render.py --manifest movements.csv --all
+```
 
-The Blender layer creates a plain-background, fixed-camera, full-body 6–10 second driving MP4. It chooses front three-quarter by default and a side view for hinge/deadlift mechanics. It attaches the relevant graphite/lime proxy props, then applies range/depth/stance changes to the easier variant. These clips are controls—not final MOVA media.
+The batch dispatcher:
+
+- resolves every MOVA movement to a specific procedural movement family
+- creates Standard and Easier variants
+- uses the fixed 720×900, 30 FPS, 8-second driving-video contract
+- adds MOVA Bar / Handle Band / Mini Band proxy equipment where required
+- skips existing valid clips on rerun
+- continues after individual failures
+- supports `--job-id CODE:variant`, `--max-items`, `--resume`, `--force`, and `--dry-run`
+
+Mixamo support remains available only as an optional fallback and is not required for the standard 86-job build.
+
+After rendering:
+
+```bash
+python3 scripts/qc_driving_motion.py
+```
+
+This creates:
+
+- `motion/driving_motion_qc.csv`
+- `motion/driving_motion_contact_sheet.html`
+
+The contact sheet is the fast human review step before Wan generation.
 
 ## 4. Run Wan2.2 Animate locally or on Kaggle
 
 The free Kaggle workflow is the recommended route:
 
-1. Upload this `mova-video-factory` directory as a private Kaggle dataset, including `presenter/presenter.png` and the generated `motion/processed/` clips. Or clone this repository in the notebook and then add those private inputs.
+1. Provide `presenter/presenter.png` plus the generated `motion/processed/` clips to the notebook. The source repository may be cloned normally; generated control clips can be added as private Kaggle input if they are not committed.
 2. Create a Kaggle notebook with a GPU accelerator. Enable Internet only when the chosen official Wan source/weights require it.
 3. Upload/open `kaggle/MOVA_Video_Factory.ipynb`.
 4. Set the configuration cell (`TEST_ONE`, `BATCH_COUNT`, `RESUME`, `GENERATE_ALL_MISSING`, dataset/repository paths, and Wan weights source), then run all cells in order.
