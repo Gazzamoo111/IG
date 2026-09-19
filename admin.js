@@ -389,7 +389,7 @@ function media(){
       return slots.some(a=>a.status===mediaFilter.status);
     });
 
-  root.innerHTML=header("Media library","Every MOVA demo clip, filming brief and approval state in one place.")+
+  root.innerHTML=header("Media library","Every MOVA movement animation, motion brief and approval state in one place.")+
   `<div class="media-summary">
     ${smallMetric("Media slots",assets.length)}
     ${smallMetric("Approved",approved)}
@@ -398,7 +398,7 @@ function media(){
   </div>
 
   <section class="section">
-    <div class="section-head"><div><h2>Filming standard</h2><p>One visual system across every MOVA movement.</p></div></div>
+    <div class="section-head"><div><h2>Animation standard</h2><p>One consistent generated demonstrator across every MOVA movement.</p></div></div>
     <div class="media-guidelines">
       ${guideline("Frame",guidelines.target_resolution||"1080×1350 · 4:5")}
       ${guideline("Clip",guidelines.target_clip_length||"6–10 seconds")}
