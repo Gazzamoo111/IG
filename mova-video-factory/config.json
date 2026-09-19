@@ -1,0 +1,10 @@
+{
+  "generation_version": "v1",
+  "canonical_source": "Provide with --source-json when building the manifest (for example, an exported MOVA admin JSON file).",
+  "presenter_reference": "presenter/presenter.png",
+  "final_media_root": "media",
+  "staging_output_root": "output",
+  "mova_api_endpoint": "",
+  "mova_api_key_env": "MOVA_API_KEY",
+  "notes": "No production endpoint or secret is stored in this repository. Configure them at run time."
+}

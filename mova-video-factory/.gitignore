@@ -1,0 +1,24 @@
+# Human-provided and generated media
+presenter/presenter.png
+motion/source/*
+!motion/source/.gitkeep
+motion/processed/*
+!motion/processed/.gitkeep
+motion/blender_batch_report.csv
+output/standard/*
+!output/standard/.gitkeep
+output/easier/*
+!output/easier/.gitkeep
+output/failed/*
+!output/failed/.gitkeep
+output/qc/*
+!output/qc/.gitkeep
+
+# Large model/checkpoint files and local Wan checkout
+wan/vendor/
+wan/models/
+*.ckpt
+*.safetensors
+*.pt
+*.pth
+__pycache__/

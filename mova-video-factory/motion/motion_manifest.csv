@@ -1,0 +1,22 @@
+movement_code,movement_pattern,equipment,source_type,source_path,notes
+template_squat,squat,bodyweight,template,,Reusable squat / sit-to-stand template
+template_hinge,hinge,bodyweight,template,,Reusable hinge template; side camera
+template_row,row,handle_band,template,,Reusable band row template
+template_curl,curl,handle_band,template,,Reusable curl template
+template_front_raise,front_raise,handle_band,template,,Reusable front raise template
+template_calf_raise,calf_raise,bodyweight,template,,Reusable calf raise template
+template_deadlift,deadlift,bar,template,,Reusable bar deadlift template; side camera
+template_chest_press,chest_press,handle_band,template,,Reusable band chest press template
+template_reverse_fly,reverse_fly,handle_band,template,,Reusable reverse fly template
+template_lateral_step,lateral_step,mini_band,template,,Reusable lateral step template
+template_lateral_tap,lateral_tap,mini_band,template,,Reusable lateral tap template
+template_march,march,mini_band,template,,Reusable march template
+template_hip_abduction,hip_abduction,mini_band,template,,Reusable hip-abduction template
+template_step_back,step_back,bodyweight,template,,Reusable step-back template
+template_monster_walk,monster_walk,mini_band,template,,Reusable forward/back monster walk template
+template_squat_pulse,squat_pulse,mini_band,template,,Reusable squat pulse template
+template_rotation,rotation,handle_band,template,,Reusable rotation template
+template_arm_sweep,arm_sweep,bodyweight,template,,Reusable arm sweep template
+template_side_reach,side_reach,bodyweight,template,,Reusable side-reach template
+template_weight_shift,weight_shift,bodyweight,template,,Reusable weight-shift template
+template_combined,combined,bodyweight,template,,Reusable combined-movement template
