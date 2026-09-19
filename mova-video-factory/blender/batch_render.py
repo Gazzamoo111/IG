@@ -147,6 +147,9 @@ def run():
         append_report([outcomes[-1]])
         if status == "failed":
             print(f"  FAILED; continuing. See {BATCH_REPORT}")
+            print("----- Blender error -----")
+            print((completed.stdout or "").strip())
+            print("-------------------------")
 
     # Dry runs/skips may not have been persisted one-by-one.
     persisted = [row for row in outcomes if row["status"] in {"planned", "skipped_complete"}]
