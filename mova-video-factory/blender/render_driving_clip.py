@@ -15,6 +15,12 @@ import json
 import sys
 from pathlib import Path
 
+# Blender's --python execution does not reliably add this script's directory
+# to sys.path. Add it explicitly so sibling MOVA modules import in headless runs.
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
 import bpy
 
 from apply_movement_overrides import apply_imported_motion_override, resolve_override
