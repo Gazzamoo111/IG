@@ -8,6 +8,7 @@ let contentMode="sessions";
 let sessionFilter={duration:"all",equipment:"all",goal:"all"};
 let builderSession=null;
 let movementEditor=null;
+let mediaFilter={equipment:"all",status:"all"};
 
 const labelGoal=g=>({loosen_up:"Loosen Up",get_moving:"Get Moving",get_stronger:"Get Stronger",whole_body:"Whole Body"}[g]||g);
 const labelEquipment=e=>({bar:"MOVA Bar",handle_band:"Handle Band",mini_band:"Mini Band",bodyweight:"Bodyweight"}[e]||e);
@@ -98,6 +99,7 @@ function render(){
   else if(tab==="fleets") fleets();
   else if(tab==="kits") kits();
   else if(tab==="content") content();
+  else if(tab==="media") media();
   else if(tab==="equipment") equipment();
   else analytics();
   bindHeader();
@@ -111,6 +113,7 @@ function overview(){
     ${smallMetric("Kits",s.kits)}
     ${smallMetric("Ready sessions",s.ready_sessions)}
     ${smallMetric("Movements",s.movement_records)}
+    ${smallMetric("Media",`${s.media_approved||0}/${s.media_slots||0}`,"Approved clips")}
   </div>
   <section class="section"><div class="grid-2">
     <div class="panel"><div class="panel-title">Product build</div><div class="mix-list">
@@ -368,6 +371,164 @@ async function saveMovement(){
     movementEditor=JSON.parse(JSON.stringify(data.movements.find(x=>x.code===payload.code.toUpperCase())));
     renderMovements();
   }catch(e){alert(e.message);renderMovements()}
+}
+
+function media(){
+  const assets=data.media||[];
+  const approved=assets.filter(a=>a.status==="approved").length;
+  const uploaded=assets.filter(a=>a.status==="uploaded").length;
+  const planned=assets.filter(a=>a.status==="planned").length;
+  const guidelines=data.media_guidelines||{};
+
+  const movementRows=data.movements
+    .filter(m=>m.active)
+    .filter(m=>mediaFilter.equipment==="all"||m.equipment===mediaFilter.equipment)
+    .filter(m=>{
+      if(mediaFilter.status==="all") return true;
+      const slots=assets.filter(a=>a.movement_code===m.code);
+      return slots.some(a=>a.status===mediaFilter.status);
+    });
+
+  root.innerHTML=header("Media library","Every MOVA demo clip, filming brief and approval state in one place.")+
+  `<div class="media-summary">
+    ${smallMetric("Media slots",assets.length)}
+    ${smallMetric("Approved",approved)}
+    ${smallMetric("Uploaded",uploaded)}
+    ${smallMetric("Planned",planned)}
+  </div>
+
+  <section class="section">
+    <div class="section-head"><div><h2>Filming standard</h2><p>One visual system across every MOVA movement.</p></div></div>
+    <div class="media-guidelines">
+      ${guideline("Frame",guidelines.target_resolution||"1080×1350 · 4:5")}
+      ${guideline("Clip",guidelines.target_clip_length||"6–10 seconds")}
+      ${guideline("Camera",guidelines.camera||"Locked-off camera")}
+      ${guideline("Framing",guidelines.framing||"Full body visible")}
+      ${guideline("Style",guidelines.style||"Clean neutral background")}
+      ${guideline("Audio",guidelines.audio||"Muted")}
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="media-filter">
+      <select id="media-equipment">
+        <option value="all">All equipment</option>
+        <option value="bar">MOVA Bar</option>
+        <option value="handle_band">Handle Band</option>
+        <option value="mini_band">Mini Band</option>
+        <option value="bodyweight">Bodyweight</option>
+      </select>
+      <select id="media-status">
+        <option value="all">All status</option>
+        <option value="planned">Planned</option>
+        <option value="uploaded">Uploaded</option>
+        <option value="approved">Approved</option>
+      </select>
+    </div>
+    <div class="media-grid">
+      ${movementRows.map(m=>mediaCard(m,assets)).join("")}
+    </div>
+  </section>`;
+
+  document.getElementById("media-equipment").value=mediaFilter.equipment;
+  document.getElementById("media-status").value=mediaFilter.status;
+  document.getElementById("media-equipment").addEventListener("change",e=>{mediaFilter.equipment=e.target.value;media()});
+  document.getElementById("media-status").addEventListener("change",e=>{mediaFilter.status=e.target.value;media()});
+
+  document.querySelectorAll("[data-upload-media]").forEach(btn=>btn.addEventListener("click",()=>uploadMediaVariant(btn)));
+  document.querySelectorAll("[data-approve-media]").forEach(btn=>btn.addEventListener("click",()=>approveMediaVariant(btn)));
+}
+
+function guideline(title,value){
+  return `<div class="media-guideline"><strong>${esc(title)}</strong><span>${esc(value)}</span></div>`;
+}
+
+function mediaCard(m,assets){
+  const standard=assets.find(a=>a.movement_code===m.code&&a.variant==="standard")||{status:"planned",variant:"standard"};
+  const easier=assets.find(a=>a.movement_code===m.code&&a.variant==="easier")||{status:"planned",variant:"easier"};
+  return `<div class="media-card">
+    <div class="media-card-head">
+      <div>
+        <div class="eyebrow">${esc(labelEquipment(m.equipment))}</div>
+        <h3>${esc(m.name)}</h3>
+        <div class="code">${esc(m.code)}</div>
+      </div>
+      <span class="tag">L${Number(m.difficulty||1)}</span>
+    </div>
+    <div class="brief">${esc(m.video_brief||"Film a clear full-body demonstration with the complete movement visible.")}</div>
+    <div class="media-variants">
+      ${mediaVariantHtml(m,standard,"Standard",m.name)}
+      ${mediaVariantHtml(m,easier,"Easier",m.easier_name||"Easier variation")}
+    </div>
+  </div>`;
+}
+
+function mediaVariantHtml(m,a,label,displayName){
+  const status=a.status||"planned";
+  return `<div class="media-variant" data-media-code="${esc(m.code)}" data-media-variant="${esc(a.variant)}">
+    <div class="media-variant-top">
+      <div><div class="media-variant-name">${esc(label)}</div><div style="font-size:11px;color:#858c8f;margin-top:3px">${esc(displayName)}</div></div>
+      <span class="media-status ${esc(status)}">${esc(status)}</span>
+    </div>
+
+    ${a.public_url ? `<div class="media-preview"><video src="${esc(a.public_url)}" muted loop playsinline controls></video></div>` : ""}
+
+    <div class="media-upload-row" style="margin-top:10px">
+      <input type="file" accept="video/mp4,video/webm,video/quicktime">
+      <button class="btn" data-upload-media="1">Upload</button>
+      ${status==="uploaded" ? `<button class="btn primary" data-approve-media="1">Approve</button>` : ""}
+      ${status==="approved" ? `<span class="tag approved">Live in player</span>` : ""}
+    </div>
+  </div>`;
+}
+
+async function uploadMediaVariant(btn){
+  const row=btn.closest(".media-variant");
+  const code=row.dataset.mediaCode;
+  const variant=row.dataset.mediaVariant;
+  const file=row.querySelector('input[type="file"]').files[0];
+  if(!file){alert("Choose a video file first");return;}
+
+  try{
+    const key=await ensureAdminKey();
+    btn.disabled=true;btn.textContent="Uploading…";
+
+    const form=new FormData();
+    form.append("action","upload_media");
+    form.append("movement_code",code);
+    form.append("variant",variant);
+    form.append("file",file);
+
+    const r=await fetch(WRITE_API,{
+      method:"POST",
+      headers:{"x-mova-admin-key":key},
+      body:form
+    });
+    const d=await r.json().catch(()=>({}));
+    if(r.status===401) sessionStorage.removeItem("mova_admin_key");
+    if(!r.ok) throw new Error(d.error||"Upload failed");
+
+    await loadData();
+    media();
+  }catch(e){
+    alert(e.message);
+    media();
+  }
+}
+
+async function approveMediaVariant(btn){
+  const row=btn.closest(".media-variant");
+  const code=row.dataset.mediaCode;
+  const variant=row.dataset.mediaVariant;
+  try{
+    btn.disabled=true;btn.textContent="Approving…";
+    await adminPost({action:"approve_media",movement_code:code,variant});
+    await loadData();
+    media();
+  }catch(e){
+    alert(e.message);
+    media();
+  }
 }
 
 function equipment(){
