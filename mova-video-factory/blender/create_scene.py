@@ -100,7 +100,7 @@ def configure_render() -> None:
     # the system ffmpeg binary installed on the host.
     scene.render.image_settings.file_format = "PNG"
     scene.render.film_transparent = False
-    scene.render.engine = "BLENDER_EEVEE_NEXT"
+    scene.render.engine = "BLENDER_EEVEE"
     scene.render.image_settings.color_mode = "RGB"
     scene.world.color = BACKGROUND[:3]
     scene.view_settings.look = "AgX - Medium High Contrast"
