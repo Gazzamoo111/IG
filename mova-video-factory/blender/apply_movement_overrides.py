@@ -28,7 +28,7 @@ class MovementOverride:
 def resolve_override(pattern: str, variant: str) -> MovementOverride:
     pattern = normalise_pattern(pattern)
     if variant.lower() == "standard":
-        return MovementOverride(camera_view="side" if pattern in {"hinge", "deadlift"} else "three_quarter")
+        return MovementOverride(camera_view="side" if pattern in {"hinge", "deadlift", "step_back", "split_shift"} else "three_quarter")
 
     # Movement-specific reduced variants. All have a changed geometry/range so
     # the driving source visibly signals the actual easier prescription.
@@ -54,6 +54,13 @@ def resolve_override(pattern: str, variant: str) -> MovementOverride:
         "side_reach": dict(range_scale=.62, arm_elevation=.58, balance_demand=.70, note="shorter side reach"),
         "weight_shift": dict(range_scale=.65, step_distance=.60, stance_width=1.12, note="smaller stable weight shift"),
         "combined": dict(range_scale=.60, squat_depth=.58, arm_elevation=.60, note="reduced range on both movement components"),
+        "hinge_row": dict(range_scale=.62, hinge_depth=.58, arm_elevation=.66, camera_view="side", note="smaller hinge and shorter row"),
+        "squat_curl": dict(range_scale=.62, squat_depth=.58, arm_elevation=.66, note="shallow squat and shorter curl"),
+        "squat_reach": dict(range_scale=.60, squat_depth=.56, arm_elevation=.55, note="shallow squat and lower reach"),
+        "squat_side_step": dict(range_scale=.58, squat_depth=.56, step_distance=.50, note="shallow squat and shorter side step"),
+        "wide_march": dict(range_scale=.58, step_distance=.50, balance_demand=.60, stance_width=1.08, note="low wide march / weight shift"),
+        "split_shift": dict(range_scale=.60, step_distance=.52, balance_demand=.55, camera_view="side", note="smaller split-stance shift"),
+        "heel_toe": dict(range_scale=.62, balance_demand=.60, note="smaller heel-toe rock"),
     }
     return MovementOverride(**values.get(pattern, dict(range_scale=.65, note="reduced range with stable stance")))
 
