@@ -106,3 +106,31 @@ border-right:0;border-bottom:1px solid var(--line);padding:10px}.nav-btn{width:a
   .builder-row select[data-field="alternate_movement_code"]{grid-area:alternate}
   .builder-row .row-actions{grid-area:actions}
 }
+
+/* Media library */
+.media-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:20px}
+.media-guidelines{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}
+.media-guideline{border:1px solid var(--line);border-radius:15px;background:#121415;padding:13px}
+.media-guideline strong{display:block;font-size:10px;color:var(--lime);text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px}
+.media-guideline span{font-size:12px;color:#b4b9bb;line-height:1.4}
+.media-filter{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 12px}
+.media-filter select{background:#111315;border:1px solid var(--line);color:var(--text);border-radius:12px;padding:10px}
+.media-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.media-card{border:1px solid var(--line);border-radius:20px;background:var(--panel);padding:17px}
+.media-card-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.media-card h3{margin:5px 0 4px;font-size:17px}
+.media-card .brief{color:var(--muted);font-size:11px;line-height:1.45;margin:10px 0 14px}
+.media-variants{display:grid;gap:9px}
+.media-variant{border:1px solid #292d2f;border-radius:15px;padding:12px;background:#131516}
+.media-variant-top{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:9px}
+.media-variant-name{font-size:11px;font-weight:850;text-transform:uppercase;letter-spacing:.08em}
+.media-status{font-size:9px;border:1px solid var(--line);border-radius:999px;padding:5px 7px;text-transform:uppercase;letter-spacing:.06em;color:#adb2b4}
+.media-status.approved{color:var(--lime)}
+.media-status.uploaded{color:#f1f2f0}
+.media-upload-row{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.media-upload-row input[type=file]{max-width:230px;font-size:10px;color:#92999c}
+.media-upload-row .btn{min-height:36px;padding:0 10px;font-size:11px}
+.media-preview{margin-top:10px;aspect-ratio:4/5;max-height:300px;border-radius:13px;overflow:hidden;background:#0d0f10}
+.media-preview video{width:100%;height:100%;object-fit:cover}
+@media(max-width:1000px){.media-grid{grid-template-columns:1fr}.media-guidelines{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:760px){.media-summary,.media-guidelines{grid-template-columns:1fr 1fr}}
