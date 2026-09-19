@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MOVA Motion</title>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#141617}
+body{display:grid;place-items:center}
+svg{width:100%;height:100%;display:block}
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script>
+const params=new URLSearchParams(location.search);
+const code=(params.get("code")||"BW_SQUAT").toUpperCase();
+const easier=(params.get("variant")||"standard")==="easier";
+const moves={
+BAR_CALF_RAISE:["bar","lower_leg"],BAR_CURL:["bar","curl"],BAR_DEADLIFT:["bar","deadlift"],BAR_FRONT_RAISE:["bar","front_raise"],BAR_HINGE:["bar","hinge"],BAR_HINGE_ROW:["bar","hinge_row"],BAR_ROW:["bar","row"],BAR_SQUAT:["bar","squat"],BAR_SQUAT_CURL:["bar","squat_curl"],
+BW_ARM_SWEEP:["bodyweight","arm_sweep"],BW_CALF_RAISE:["bodyweight","lower_leg"],BW_HEEL_TOE_ROCK:["bodyweight","heel_toe"],BW_HINGE:["bodyweight","hinge"],BW_LATERAL_STEP:["bodyweight","lateral_step"],BW_MARCH:["bodyweight","march"],BW_SIDE_REACH:["bodyweight","side_reach"],BW_SPLIT_SHIFT:["bodyweight","split_shift"],BW_SQUAT:["bodyweight","squat"],BW_SQUAT_REACH:["bodyweight","squat_reach"],BW_STEP_BACK:["bodyweight","step_back"],BW_THORACIC_ROTATION:["bodyweight","rotation"],
+HB_CALF_RAISE:["handle_band","lower_leg"],HB_CHEST_PRESS:["handle_band","chest_press"],HB_CURL:["handle_band","curl"],HB_FRONT_RAISE:["handle_band","front_raise"],HB_HINGE:["handle_band","hinge"],HB_HINGE_ROW:["handle_band","hinge_row"],HB_REVERSE_FLY:["handle_band","reverse_fly"],HB_ROW:["handle_band","row"],HB_SQUAT:["handle_band","squat"],HB_SQUAT_CURL:["handle_band","squat_curl"],
+MINI_CALF_RAISE:["mini_band","lower_leg"],MINI_HINGE:["mini_band","hinge"],MINI_HIP_ABDUCTION:["mini_band","hip_abduction"],MINI_LATERAL_STEP:["mini_band","lateral_step"],MINI_LATERAL_TAP:["mini_band","lateral_tap"],MINI_MARCH:["mini_band","march"],MINI_MONSTER_WALK:["mini_band","monster_walk"],MINI_SQUAT:["mini_band","squat"],MINI_SQUAT_PULSE:["mini_band","squat_pulse"],MINI_SQUAT_SIDE_STEP:["mini_band","squat_side_step"],MINI_STEP_BACK:["mini_band","step_back"],MINI_WIDE_MARCH:["mini_band","wide_march"]
+};
+const [equipment,type]=moves[code]||["bodyweight","squat"];
+const phases=[0,.5,1,.5,0], keyTimes="0;0.25;0.5;0.75;1";
+const R=n=>Math.round(n*10)/10;
+function pose(type,p,easy){
+  const amp=easy?.55:1;p*=amp;
+  const j={head:[270,105],neck:[270,145],ls:[225,175],rs:[315,175],le:[205,255],re:[335,255],lw:[200,330],rw:[340,330],lh:[245,320],rh:[295,320],lk:[240,445],rk:[300,445],la:[230,565],ra:[310,565]};
+  const shift=(dx,dy,keys=Object.keys(j))=>keys.forEach(k=>{j[k]=[j[k][0]+dx,j[k][1]+dy]});
+  const set=(k,x,y)=>j[k]=[x,y];
+
+  if(type==="squat"||type==="squat_pulse"){
+    const d=(type==="squat_pulse"?55:95)*p;
+    shift(0,d*.55,["head","neck","ls","rs","le","re","lw","rw"]);
+    shift(0,d*.75,["lh","rh"]);set("lk",220-10*p,445+d*.34);set("rk",320+10*p,445+d*.34);
+  }else if(type==="hinge"||type==="deadlift"){
+    const d=(type==="deadlift"?70:60)*p;
+    shift(35*p,d*.55,["head","neck","ls","rs","le","re","lw","rw"]);
+    shift(10*p,12*p,["lh","rh"]);set("lk",238,445+18*p);set("rk",302,445+18*p);
+  }else if(type==="row"){
+    shift(28*p,42*p,["head","neck","ls","rs","lh","rh"]);
+    set("le",220,245-35*p);set("re",320,245-35*p);set("lw",230,330-110*p);set("rw",310,330-110*p);
+  }else if(type==="hinge_row"){
+    shift(30*p,40*p,["head","neck","ls","rs","lh","rh"]);
+    set("le",220,255-30*p);set("re",320,255-30*p);set("lw",230,330-95*p);set("rw",310,330-95*p);
+  }else if(type==="curl"){
+    set("le",215,260);set("re",325,260);set("lw",205+35*p,330-120*p);set("rw",335-35*p,330-120*p);
+  }else if(type==="front_raise"){
+    set("le",215,250-35*p);set("re",325,250-35*p);set("lw",205+30*p,330-150*p);set("rw",335-30*p,330-150*p);
+  }else if(type==="lower_leg"){
+    shift(0,-24*p,["head","neck","ls","rs","le","re","lw","rw","lh","rh","lk","rk"]);
+  }else if(type==="heel_toe"){
+    shift(16*p,-6*p,["head","neck","ls","rs","le","re","lw","rw","lh","rh","lk","rk"]);
+  }else if(type==="chest_press"){
+    set("le",225-20*p,235);set("re",315+20*p,235);set("lw",250-95*p,215-15*p);set("rw",290+95*p,215-15*p);
+  }else if(type==="reverse_fly"){
+    set("le",245-55*p,255-35*p);set("re",295+55*p,255-35*p);set("lw",255-125*p,310-115*p);set("rw",285+125*p,310-115*p);
+  }else if(type==="lateral_step"||type==="lateral_tap"){
+    const d=(type==="lateral_step"?55:35)*p;set("ra",310+d,565);set("rk",300+d*.65,445);set("rh",295+d*.25,320);shift(d*.12,0,["head","neck","ls","rs","le","re","lw","rw","lh"]);
+  }else if(type==="hip_abduction"){
+    set("ra",310+75*p,555-15*p);set("rk",300+55*p,445-8*p);set("rh",295+12*p,320);
+  }else if(type==="march"||type==="wide_march"){
+    const q=p<=.5?p*2:(1-p)*2, side=p>.5?1:-1;
+    if(side<0){set("lk",230,445-95*q);set("la",245,565-165*q)}else{set("rk",310,445-95*q);set("ra",295,565-165*q)}
+    if(type==="wide_march"){set("la",j.la[0]-18,j.la[1]);set("ra",j.ra[0]+18,j.ra[1])}
+  }else if(type==="monster_walk"){
+    set("la",230-35*p,565-18*p);set("ra",310+35*p,565+8*p);shift(12*p,0,["head","neck","ls","rs","le","re","lw","rw","lh","rh"]);
+  }else if(type==="step_back"){
+    set("ra",310+35*p,565);set("rk",300+18*p,445);set("rh",295+5*p,320);
+  }else if(type==="squat_side_step"){
+    const d=70*p;shift(0,55*p,["head","neck","ls","rs","le","re","lw","rw"]);shift(0,65*p,["lh","rh"]);
+    set("la",230-d*.35,565);set("ra",310+d,565);set("lk",230-d*.15,465);set("rk",315+d*.55,465);
+  }else if(type==="arm_sweep"){
+    set("le",210-40*p,255-75*p);set("re",330+40*p,255-75*p);set("lw",200-75*p,330-190*p);set("rw",340+75*p,330-190*p);
+  }else if(type==="side_reach"){
+    const d=45*p;shift(-d*.5,d*.15,["head","neck","ls","rs"]);
+    set("le",205-d*.45,255+d*.55);set("lw",195-d*.75,330+d);set("re",335-d*.1,255-d*.4);set("rw",340-d*.2,330-d*.85);
+  }else if(type==="rotation"){
+    const d=40*p;set("ls",225+d,175);set("rs",315-d,175);set("le",225+d,245);set("re",315-d,245);set("lw",245+d,285);set("rw",295-d,285);
+  }else if(type==="split_shift"){
+    set("la",215,565);set("ra",335,565);set("lk",235-10*p,445+35*p);set("rk",305+10*p,445-15*p);shift(-12*p,12*p,["head","neck","ls","rs","le","re","lw","rw","lh","rh"]);
+  }else if(type==="squat_reach"){
+    const d=90*p;shift(0,d*.55,["head","neck","ls","rs"]);shift(0,d*.72,["lh","rh"]);set("lk",220,445+d*.3);set("rk",320,445+d*.3);
+    set("le",225,235);set("re",315,235);set("lw",255,220);set("rw",285,220);
+  }else if(type==="squat_curl"){
+    const d=85*p;shift(0,d*.55,["head","neck","ls","rs"]);shift(0,d*.72,["lh","rh"]);set("lk",220,445+d*.3);set("rk",320,445+d*.3);
+    set("le",215,260);set("re",325,260);set("lw",205+30*p,330-105*p);set("rw",335-30*p,330-105*p);
+  }
+  return j;
+}
+const frames=phases.map(p=>pose(type,p,easier));
+const vals=(key,axis)=>frames.map(f=>R(f[key][axis])).join(";");
+const anim=(attr,values)=>'<animate attributeName="'+attr+'" values="'+values+'" keyTimes="'+keyTimes+'" dur="5.4s" repeatCount="indefinite" calcMode="spline" keySplines=".42 0 .58 1;.42 0 .58 1;.42 0 .58 1;.42 0 .58 1"/>';
+const line=(a,b,w=12,stroke="#F4F1E8")=>'<line x1="'+frames[0][a][0]+'" y1="'+frames[0][a][1]+'" x2="'+frames[0][b][0]+'" y2="'+frames[0][b][1]+'" stroke="'+stroke+'" stroke-width="'+w+'" stroke-linecap="round">'+anim("x1",vals(a,0))+anim("y1",vals(a,1))+anim("x2",vals(b,0))+anim("y2",vals(b,1))+'</line>';
+const circle=(k,r,fill="#F4F1E8")=>'<circle cx="'+frames[0][k][0]+'" cy="'+frames[0][k][1]+'" r="'+r+'" fill="'+fill+'">'+anim("cx",vals(k,0))+anim("cy",vals(k,1))+'</circle>';
+function equipmentSvg(){
+  if(equipment==="bar"){
+    const yOff=(type==="squat"||type==="squat_curl")?-85:0;
+    const xl=frames.map(f=>R(f.lw[0]-25)).join(";"),xr=frames.map(f=>R(f.rw[0]+25)).join(";");
+    const yl=frames.map(f=>R(f.lw[1]+yOff)).join(";"),yr=frames.map(f=>R(f.rw[1]+yOff)).join(";");
+    return '<line x1="'+(frames[0].lw[0]-25)+'" y1="'+(frames[0].lw[1]+yOff)+'" x2="'+(frames[0].rw[0]+25)+'" y2="'+(frames[0].rw[1]+yOff)+'" stroke="#C8FF31" stroke-width="16" stroke-linecap="round">'+anim("x1",xl)+anim("y1",yl)+anim("x2",xr)+anim("y2",yr)+'</line>';
+  }
+  if(equipment==="handle_band"){
+    return '<line x1="'+frames[0].la[0]+'" y1="'+frames[0].la[1]+'" x2="'+frames[0].lw[0]+'" y2="'+frames[0].lw[1]+'" stroke="#C8FF31" stroke-width="8" stroke-linecap="round" opacity=".92">'+anim("x1",vals("la",0))+anim("y1",vals("la",1))+anim("x2",vals("lw",0))+anim("y2",vals("lw",1))+'</line>'+
+    '<line x1="'+frames[0].ra[0]+'" y1="'+frames[0].ra[1]+'" x2="'+frames[0].rw[0]+'" y2="'+frames[0].rw[1]+'" stroke="#C8FF31" stroke-width="8" stroke-linecap="round" opacity=".92">'+anim("x1",vals("ra",0))+anim("y1",vals("ra",1))+anim("x2",vals("rw",0))+anim("y2",vals("rw",1))+'</line>';
+  }
+  if(equipment==="mini_band"){
+    const yL=frames.map(f=>R(f.lk[1]-22)).join(";"), yR=frames.map(f=>R(f.rk[1]-22)).join(";");
+    return '<line x1="'+frames[0].lk[0]+'" y1="'+(frames[0].lk[1]-22)+'" x2="'+frames[0].rk[0]+'" y2="'+(frames[0].rk[1]-22)+'" stroke="#C8FF31" stroke-width="12" stroke-linecap="round">'+anim("x1",vals("lk",0))+anim("y1",yL)+anim("x2",vals("rk",0))+anim("y2",yR)+'</line>';
+  }
+  return "";
+}
+const svg='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 540 675" preserveAspectRatio="xMidYMid meet">'+
+'<rect width="540" height="675" rx="28" fill="#141617"/><ellipse cx="270" cy="590" rx="145" ry="18" fill="#0B0D0E" opacity=".62"/>'+
+'<circle cx="270" cy="320" r="185" fill="#C8FF31" opacity=".055"/>'+
+line("neck","lh")+line("neck","rh")+line("ls","rs")+line("ls","le")+line("le","lw")+line("rs","re")+line("re","rw")+line("lh","rh")+
+line("lh","lk",14)+line("lk","la",14)+line("rh","rk",14)+line("rk","ra",14)+circle("head",30)+circle("lw",8,"#C8FF31")+circle("rw",8,"#C8FF31")+equipmentSvg()+
+'</svg>';
+document.getElementById("stage").innerHTML=svg;
+</script>
+</body>
+</html>
