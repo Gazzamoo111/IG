@@ -455,3 +455,5 @@ h1 {
 .option-preview-card{margin:24px 0 18px;padding:18px;border:1px solid var(--line);border-radius:20px;background:linear-gradient(180deg,var(--panel-2),#141617)}
 .option-preview-card .session-preview{margin:14px 0 0}
 @media(max-width:370px){.option-equipment-grid{grid-template-columns:1fr}}
+
+.movement-frame,.movement-animation{width:100%;height:100%;border:0;display:block;object-fit:cover;background:#141617}
