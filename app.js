@@ -497,13 +497,20 @@ function renderStageMedia(movement, variant) {
   const stage = document.getElementById("stage-demo");
   if (!stage) return;
   if (variant.demo) {
-    stage.innerHTML = `<video class="movement-video" src="${escapeHtml(variant.demo)}" autoplay muted loop playsinline preload="auto"></video>`;
+    const src = escapeHtml(variant.demo);
+    if (variant.demo.includes("/media/motion.html")) {
+      stage.innerHTML = `<iframe class="movement-frame" src="${src}" title="${escapeHtml(variant.label)} demonstration" loading="eager"></iframe>`;
+    } else if (/\.svg(?:\?|$)/i.test(variant.demo)) {
+      stage.innerHTML = `<img class="movement-animation" src="${src}" alt="${escapeHtml(variant.label)} demonstration">`;
+    } else {
+      stage.innerHTML = `<video class="movement-video" src="${src}" autoplay muted loop playsinline preload="auto"></video>`;
+    }
     return;
   }
   stage.innerHTML = `
     <div class="equipment-mark" aria-hidden="true"><span></span><span></span><span></span></div>
     <div class="demo-kicker">MOVEMENT DEMO</div>
-    <div class="demo-copy">${escapeHtml(variant.label)}<br><span style="color:#747b7e">Video asset pending</span></div>
+    <div class="demo-copy">${escapeHtml(variant.label)}<br><span style="color:#747b7e">Animation pending</span></div>
   `;
 }
 
