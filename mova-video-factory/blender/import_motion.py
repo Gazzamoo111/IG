@@ -321,11 +321,9 @@ def create_template_motion(
 
     _locomotion(armature, pattern, range_scale, variant)
 
-    action = armature.animation_data.action if armature.animation_data else None
-    if action:
-        for curve in action.fcurves:
-            for key in curve.keyframe_points:
-                key.interpolation = "BEZIER"
+    # Blender 5.x removed the legacy Action.fcurves API. Keyframes inserted
+    # above already use Bezier interpolation by default, so no Action traversal
+    # is required here.
     armature["mova_movement_code"] = movement_code
     armature["mova_variant"] = variant
     armature["mova_pattern"] = pattern
