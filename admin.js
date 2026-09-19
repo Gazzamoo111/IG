@@ -151,7 +151,6 @@ function content(){
   </div>
   <div id="content-body"></div>`;
 
-  bindHeader();
   document.querySelectorAll("[data-content-mode]").forEach(b=>b.addEventListener("click",()=>{
     contentMode=b.dataset.contentMode;
     builderSession=null;movementEditor=null;content();
