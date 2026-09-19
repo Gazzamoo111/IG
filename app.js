@@ -8,7 +8,17 @@ let kit = null;
 let duration = null;
 let goal = null;
 let run = null;
-let sessionStartedAt = null;
+
+let sequence = [];
+let currentIndex = 0;
+let phase = "idle";
+let phaseSeconds = 0;
+let elapsedSeconds = 0;
+let timerId = null;
+let paused = false;
+let easier = false;
+let alternateVersion = 0;
+let wakeLock = null;
 
 const deviceId = getDeviceId();
 
@@ -36,6 +46,8 @@ function render(html) { app.innerHTML = html; }
 function bind(selector, fn) { document.querySelectorAll(selector).forEach(el => el.addEventListener("click", fn)); }
 
 function showError(message) {
+  clearPlayerTimer();
+  document.body.classList.remove("session-mode");
   render(`
     <div class="eyebrow">MOVA</div>
     <h1>We couldn't open this kit.</h1>
@@ -62,6 +74,8 @@ async function boot() {
 }
 
 function renderTime() {
+  resetPlayerState();
+  document.body.classList.remove("session-mode");
   render(`
     <div class="safety"><span class="safety-dot"></span>Parked. Secure. Clear. Free to move.</div>
     <h1>How much time have you got?</h1>
@@ -73,7 +87,7 @@ function renderTime() {
     </div>
   `);
 
-  bind("[data-time]", async (event) => {
+  bind("[data-time]", (event) => {
     duration = Number(event.currentTarget.dataset.time);
     api("select_time", { duration }).catch(() => {});
     renderGoal();
@@ -141,47 +155,244 @@ function renderReady() {
   document.getElementById("change-session").addEventListener("click", renderTime);
 }
 
+function buildSequence(minutes) {
+  const count = minutes === 3 ? 3 : minutes === 5 ? 4 : 6;
+  const transitionCount = count - 1;
+  const transitionSeconds = 3;
+  const activeTotal = (minutes * 60) - (transitionCount * transitionSeconds);
+  const base = Math.floor(activeTotal / count);
+  let remainder = activeTotal - (base * count);
+
+  return Array.from({ length: count }, (_, i) => ({
+    id: i + 1,
+    label: `Movement ${String(i + 1).padStart(2, "0")}`,
+    altLabel: `Alternate ${String(i + 1).padStart(2, "0")}`,
+    seconds: base + (remainder-- > 0 ? 1 : 0)
+  }));
+}
+
 async function startSession() {
   try {
     await api("session_started", { run_id: run.run_id });
-    sessionStartedAt = Date.now();
-    renderPlayer();
+    sequence = buildSequence(duration);
+    currentIndex = 0;
+    elapsedSeconds = 0;
+    paused = false;
+    easier = false;
+    alternateVersion = 0;
+    document.body.classList.add("session-mode");
+    await requestWakeLock();
+    startPreCountdown();
   } catch (error) {
     showError(error.message);
   }
 }
 
-function renderPlayer() {
+function startPreCountdown() {
+  clearPlayerTimer();
+  phase = "prestart";
+  phaseSeconds = 3;
+  renderPlayerShell();
+  updatePlayerUI();
+  timerId = setInterval(tickPlayer, 1000);
+}
+
+function beginMovement(index) {
+  phase = "work";
+  currentIndex = index;
+  phaseSeconds = sequence[currentIndex].seconds;
+  easier = false;
+  alternateVersion = 0;
+  vibrate(35);
+  updatePlayerUI();
+}
+
+function beginTransition() {
+  phase = "transition";
+  phaseSeconds = 3;
+  easier = false;
+  vibrate([40, 35, 40]);
+  updatePlayerUI();
+}
+
+function tickPlayer() {
+  if (paused) return;
+
+  if (phase === "prestart") {
+    phaseSeconds -= 1;
+    if (phaseSeconds <= 0) {
+      beginMovement(0);
+      return;
+    }
+    vibrate(20);
+    updatePlayerUI();
+    return;
+  }
+
+  if (phase === "work" || phase === "transition") {
+    elapsedSeconds += 1;
+    phaseSeconds -= 1;
+
+    if (phaseSeconds <= 0) {
+      if (phase === "work") {
+        if (currentIndex >= sequence.length - 1) {
+          completeSession();
+          return;
+        }
+        beginTransition();
+        return;
+      }
+
+      beginMovement(currentIndex + 1);
+      return;
+    }
+
+    updatePlayerUI();
+  }
+}
+
+function renderPlayerShell() {
   render(`
     <div class="player">
-      <div class="player-top"><span>${duration} MIN · ${escapeHtml(run.equipment_label)}</span><span>1 / —</span></div>
-      <div class="progress"><div></div></div>
-      <div class="player-stage">
-        <div class="timer">0:30</div>
-        <div class="player-placeholder">
-          <strong>Movement player</strong>
-          Video, timer and movement cues are the next build.
+      <div class="player-top">
+        <span id="player-meta"></span>
+        <span id="overall-remaining"></span>
+      </div>
+      <div class="progress"><div id="progress-fill"></div></div>
+
+      <div class="player-stage equipment-${escapeHtml(run.equipment)}" id="player-stage">
+        <div class="timer" id="movement-timer"></div>
+        <div class="stage-demo" id="stage-demo">
+          <div class="equipment-mark" aria-hidden="true">
+            <span></span><span></span><span></span>
+          </div>
+          <div class="demo-kicker" id="demo-kicker">PLAYER PROTOTYPE</div>
+          <div class="demo-copy" id="demo-copy">Movement demo will play here.</div>
         </div>
+        <div class="stage-badge" id="stage-badge">STANDARD</div>
       </div>
-      <div class="player-title">Session started</div>
-      <div class="player-cue">The scanner and backend are now connected end-to-end.</div>
+
+      <div>
+        <div class="player-title" id="movement-title"></div>
+        <div class="player-cue" id="movement-cue"></div>
+      </div>
+
       <div class="player-controls">
-        <button type="button">Easier</button>
-        <button type="button">Pause</button>
-        <button type="button">Skip</button>
+        <button type="button" id="easier-btn">Easier</button>
+        <button type="button" id="pause-btn">Pause</button>
+        <button type="button" id="skip-btn">Skip</button>
       </div>
-      <button class="primary-btn" id="complete-demo">Complete demo</button>
     </div>
   `);
 
-  document.getElementById("complete-demo").addEventListener("click", completeDemo);
+  document.getElementById("easier-btn").addEventListener("click", toggleEasier);
+  document.getElementById("pause-btn").addEventListener("click", togglePause);
+  document.getElementById("skip-btn").addEventListener("click", skipMovement);
 }
 
-async function completeDemo() {
-  const elapsed = sessionStartedAt ? Math.round((Date.now() - sessionStartedAt) / 1000) : 0;
+function updatePlayerUI() {
+  const meta = document.getElementById("player-meta");
+  if (!meta) return;
+
+  const totalSeconds = duration * 60;
+  const overallRemaining = Math.max(0, totalSeconds - elapsedSeconds);
+  const progress = Math.min(100, (elapsedSeconds / totalSeconds) * 100);
+  const movement = sequence[currentIndex];
+
+  document.getElementById("progress-fill").style.width = progress + "%";
+  document.getElementById("overall-remaining").textContent = formatTime(overallRemaining);
+  document.getElementById("pause-btn").textContent = paused ? "Resume" : "Pause";
+  document.getElementById("easier-btn").textContent = easier ? "Standard" : "Easier";
+
+  if (phase === "prestart") {
+    meta.textContent = `${duration} MIN · ${run.equipment_label}`;
+    document.getElementById("movement-timer").innerHTML = `<strong>${phaseSeconds}</strong>`;
+    document.getElementById("movement-title").textContent = "Get ready";
+    document.getElementById("movement-cue").textContent = "Set your equipment. Make sure you have clear space.";
+    document.getElementById("demo-kicker").textContent = "STARTING";
+    document.getElementById("demo-copy").textContent = "Your session begins in a moment.";
+    document.getElementById("stage-badge").textContent = "READY";
+    setControlsDisabled(true);
+    return;
+  }
+
+  if (phase === "transition") {
+    const next = sequence[currentIndex + 1];
+    meta.textContent = `${currentIndex + 1} / ${sequence.length} COMPLETE`;
+    document.getElementById("movement-timer").innerHTML = `<strong>${phaseSeconds}</strong><small>NEXT</small>`;
+    document.getElementById("movement-title").textContent = "Next up";
+    document.getElementById("movement-cue").textContent = next.label;
+    document.getElementById("demo-kicker").textContent = "TRANSITION";
+    document.getElementById("demo-copy").textContent = "Keep the same equipment. No swapping.";
+    document.getElementById("stage-badge").textContent = "NEXT";
+    setControlsDisabled(true);
+    return;
+  }
+
+  setControlsDisabled(false);
+  const displayLabel = alternateVersion ? movement.altLabel : movement.label;
+  meta.textContent = `${currentIndex + 1} / ${sequence.length} · ${run.equipment_label}`;
+  document.getElementById("movement-timer").innerHTML = `<strong>${phaseSeconds}</strong><small>SEC</small>`;
+  document.getElementById("movement-title").textContent = displayLabel;
+  document.getElementById("movement-cue").textContent = easier
+    ? "Easier option active. Keep the movement comfortable and controlled."
+    : "Standard option. Follow the demo and move with control.";
+  document.getElementById("demo-kicker").textContent = "MOVEMENT DEMO";
+  document.getElementById("demo-copy").textContent = alternateVersion
+    ? "Alternate movement will replace the original here."
+    : "Final exercise video will play here.";
+  document.getElementById("stage-badge").textContent = easier ? "EASIER" : "STANDARD";
+}
+
+function setControlsDisabled(disabled) {
+  ["easier-btn", "skip-btn"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = disabled;
+  });
+}
+
+function toggleEasier() {
+  if (phase !== "work") return;
+  easier = !easier;
+  updatePlayerUI();
+}
+
+function togglePause() {
+  if (phase === "prestart") return;
+  paused = !paused;
+  updatePlayerUI();
+}
+
+function skipMovement() {
+  if (phase !== "work") return;
+  const current = sequence[currentIndex];
+  api("movement_skipped", {
+    run_id: run.run_id,
+    movement_index: currentIndex + 1,
+    movement_label: alternateVersion ? current.altLabel : current.label
+  }).catch(() => {});
+
+  alternateVersion += 1;
+  easier = false;
+  vibrate(30);
+  updatePlayerUI();
+}
+
+async function completeSession() {
+  clearPlayerTimer();
+  phase = "complete";
+  elapsedSeconds = duration * 60;
+  updatePlayerUI();
+  await releaseWakeLock();
+
   try {
-    await api("session_completed", { run_id: run.run_id, elapsed_seconds: elapsed });
+    await api("session_completed", {
+      run_id: run.run_id,
+      elapsed_seconds: elapsedSeconds
+    });
   } catch (_) {}
+
+  document.body.classList.remove("session-mode");
   renderFeedback();
 }
 
@@ -189,7 +400,7 @@ function renderFeedback() {
   render(`
     <div class="eyebrow">Done</div>
     <h1>${duration} minutes complete.</h1>
-    <p class="lead">How did that feel?</p>
+    <p class="lead">How did that session feel?</p>
     <div class="feedback-grid">
       <button class="feedback-btn" data-feedback="too_easy">Too easy</button>
       <button class="feedback-btn primary-btn" data-feedback="about_right">About right</button>
@@ -213,5 +424,56 @@ function renderDone() {
   `);
   document.getElementById("again").addEventListener("click", renderTime);
 }
+
+function formatTime(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = String(seconds % 60).padStart(2, "0");
+  return `${m}:${s}`;
+}
+
+function vibrate(pattern) {
+  if ("vibrate" in navigator) navigator.vibrate(pattern);
+}
+
+function clearPlayerTimer() {
+  if (timerId) clearInterval(timerId);
+  timerId = null;
+}
+
+function resetPlayerState() {
+  clearPlayerTimer();
+  phase = "idle";
+  sequence = [];
+  currentIndex = 0;
+  elapsedSeconds = 0;
+  phaseSeconds = 0;
+  paused = false;
+  easier = false;
+  alternateVersion = 0;
+  releaseWakeLock();
+}
+
+async function requestWakeLock() {
+  if (!("wakeLock" in navigator)) return;
+  try {
+    wakeLock = await navigator.wakeLock.request("screen");
+  } catch (_) {}
+}
+
+async function releaseWakeLock() {
+  try {
+    if (wakeLock) await wakeLock.release();
+  } catch (_) {}
+  wakeLock = null;
+}
+
+document.addEventListener("visibilitychange", async () => {
+  if (document.hidden && (phase === "work" || phase === "transition")) {
+    paused = true;
+    updatePlayerUI();
+  } else if (!document.hidden && phase !== "idle" && phase !== "complete") {
+    await requestWakeLock();
+  }
+});
 
 boot();
