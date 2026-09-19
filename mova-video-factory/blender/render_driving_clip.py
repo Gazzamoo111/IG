@@ -53,7 +53,7 @@ def render_job(args) -> dict:
     build_base_scene(override.camera_view)
     armature = import_or_create(args.source_type, args.source_path or None)
     if args.source_type == "template":
-        create_template_motion(armature, pattern, range_scale=override.range_scale)
+        create_template_motion(armature, pattern, range_scale=override.range_scale, movement_code=args.movement_code, variant=args.variant)
     else:
         override = apply_imported_motion_override(armature, pattern, args.variant)
     build_props(armature, equipment, pattern)
