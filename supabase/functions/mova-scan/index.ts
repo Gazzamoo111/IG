@@ -186,6 +186,118 @@ function validateSelection(duration: number, goal: string) {
   return null;
 }
 
+
+const MOVA_TIMEZONE = "Pacific/Auckland";
+
+function localDateKey(value: string | Date) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: MOVA_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(new Date(value));
+}
+
+function shiftDateKey(key: string, days: number) {
+  const d = new Date(key + "T12:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function mondayKeyFor(key: string) {
+  const d = new Date(key + "T12:00:00Z");
+  const day = d.getUTCDay();
+  const offset = day === 0 ? -6 : 1 - day;
+  return shiftDateKey(key, offset);
+}
+
+async function deviceSummary(deviceId: string) {
+  const since = new Date();
+  since.setUTCDate(since.getUTCDate() - 120);
+
+  const [{ data: recent, error: recentError }, countResult] = await Promise.all([
+    db.from("mova_session_runs")
+      .select("id,status,duration_minutes,goal,equipment,elapsed_seconds,completed_at,created_at")
+      .eq("device_id", deviceId)
+      .in("status", ["completed", "stopped"])
+      .gte("created_at", since.toISOString())
+      .order("created_at", { ascending: false })
+      .limit(500),
+    db.from("mova_session_runs")
+      .select("id", { count: "exact", head: true })
+      .eq("device_id", deviceId)
+      .eq("status", "completed")
+  ]);
+
+  if (recentError) throw recentError;
+  if (countResult.error) throw countResult.error;
+
+  const rows = recent || [];
+  const nowKey = localDateKey(new Date());
+  const mondayKey = mondayKeyFor(nowKey);
+  const weekRows = rows.filter((r: any) => {
+    const when = r.completed_at || r.created_at;
+    const key = localDateKey(when);
+    return key >= mondayKey && key <= nowKey;
+  });
+
+  const weekCompleted = weekRows.filter((r: any) => r.status === "completed");
+  const weekMinutes = Math.round(
+    weekRows.reduce((sum: number, r: any) => {
+      const seconds = Number(r.elapsed_seconds || 0) || Number(r.duration_minutes || 0) * 60;
+      return sum + seconds;
+    }, 0) / 60
+  );
+
+  const activeDayKeys = Array.from(new Set(
+    weekRows.map((r: any) => localDateKey(r.completed_at || r.created_at))
+  ));
+
+  const allActiveDays = new Set(
+    rows.map((r: any) => localDateKey(r.completed_at || r.created_at))
+  );
+  let streakKey = allActiveDays.has(nowKey) ? nowKey : shiftDateKey(nowKey, -1);
+  let streakDays = 0;
+  while (allActiveDays.has(streakKey) && streakDays < 120) {
+    streakDays += 1;
+    streakKey = shiftDateKey(streakKey, -1);
+  }
+
+  const goalCounts = new Map<string, number>();
+  for (const r of weekCompleted) {
+    if (!r.goal) continue;
+    goalCounts.set(r.goal, (goalCounts.get(r.goal) || 0) + 1);
+  }
+  let favouriteGoal: string | null = null;
+  let favouriteCount = 0;
+  for (const [value, count] of goalCounts.entries()) {
+    if (count > favouriteCount) {
+      favouriteGoal = value;
+      favouriteCount = count;
+    }
+  }
+
+  const lastCompleted = rows.find((r: any) => r.status === "completed") || null;
+
+  return {
+    returning_user: rows.length > 0,
+    week: {
+      sessions: weekCompleted.length,
+      movement_minutes: weekMinutes,
+      active_days: activeDayKeys.length,
+      streak_days: streakDays,
+      favourite_goal: favouriteGoal
+    },
+    total_completed_sessions: Number(countResult.count || 0),
+    last_session: lastCompleted ? {
+      duration_minutes: lastCompleted.duration_minutes,
+      goal: lastCompleted.goal,
+      equipment: lastCompleted.equipment,
+      completed_at: lastCompleted.completed_at || lastCompleted.created_at
+    } : null
+  };
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
 
@@ -222,6 +334,7 @@ Deno.serve(async (req: Request) => {
 
     if (action === "scan") {
       await registerScan(kit.id, deviceId);
+      const summary = await deviceSummary(deviceId);
       return json({
         ok: true,
         kit: {
@@ -232,8 +345,13 @@ Deno.serve(async (req: Request) => {
             mini_band: kit.has_mini_band,
             bodyweight: true
           }
-        }
+        },
+        summary
       });
+    }
+
+    if (action === "device_summary") {
+      return json({ ok: true, summary: await deviceSummary(deviceId) });
     }
 
     if (action === "select_time") {
