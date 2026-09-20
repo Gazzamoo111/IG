@@ -180,9 +180,10 @@ function queueOfflineRun(status, payload = {}) {
 function updateQueuedFeedback(runId, feedback) {
   const queue = getOfflineQueue();
   const item = queue.find(entry => entry.run_id === runId);
-  if (!item) return;
+  if (!item) return false;
   item.feedback = feedback;
   setOfflineQueue(queue);
+  return true;
 }
 
 async function offlineApi(action, payload = {}) {
@@ -204,10 +205,15 @@ async function offlineApi(action, payload = {}) {
     }
     if (action === "session_completed" || action === "session_stopped") {
       queueOfflineRun(action === "session_completed" ? "completed" : "stopped", payload);
+      if (navigator.onLine) setTimeout(flushOfflineQueue, 0);
       return { ok: true, offline: true, queued: true };
     }
     if (action === "feedback") {
-      updateQueuedFeedback(run.run_id, payload.feedback);
+      const queued = updateQueuedFeedback(run.run_id, payload.feedback);
+      if (!queued && navigator.onLine) {
+        return await networkApi("feedback", payload);
+      }
+      if (navigator.onLine) setTimeout(flushOfflineQueue, 0);
       return { ok: true, offline: true, queued: true };
     }
   }
@@ -430,6 +436,11 @@ async function refreshProgress() {
   try {
     const data = await api("device_summary");
     progressSummary = data.summary || progressSummary;
+    const pack = getOfflinePack();
+    if (pack && progressSummary) {
+      pack.summary = progressSummary;
+      writeJson(OFFLINE_PACK_KEY, pack);
+    }
   } catch (_) {}
   return progressSummary;
 }
