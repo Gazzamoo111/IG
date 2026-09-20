@@ -656,3 +656,36 @@ h1 {
   border-color:#5C6C2C;
   color:var(--lime);
 }
+
+
+/* PWA install help */
+.install-card{
+  display:grid;
+  gap:10px;
+  margin:8px 0 18px;
+}
+.install-step{
+  display:grid;
+  grid-template-columns:40px 1fr;
+  align-items:center;
+  gap:12px;
+  min-height:72px;
+  padding:13px 15px;
+  border:1px solid var(--line);
+  border-radius:18px;
+  background:var(--panel);
+  color:#C7CBCC;
+  font-size:14px;
+  line-height:1.4;
+}
+.install-step>strong{
+  width:36px;
+  height:36px;
+  display:grid;
+  place-items:center;
+  border-radius:50%;
+  background:var(--lime);
+  color:#0D0E0F;
+  font-size:15px;
+}
+.install-step b{color:var(--text)}
