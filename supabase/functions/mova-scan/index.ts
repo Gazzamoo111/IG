@@ -233,9 +233,12 @@ async function deviceSummary(deviceId: string) {
   if (countResult.error) throw countResult.error;
 
   const rows = recent || [];
+  const activityRows = rows.filter((r: any) =>
+    r.status === "completed" || Number(r.elapsed_seconds || 0) > 0
+  );
   const nowKey = localDateKey(new Date());
   const mondayKey = mondayKeyFor(nowKey);
-  const weekRows = rows.filter((r: any) => {
+  const weekRows = activityRows.filter((r: any) => {
     const when = r.completed_at || r.created_at;
     const key = localDateKey(when);
     return key >= mondayKey && key <= nowKey;
@@ -244,7 +247,10 @@ async function deviceSummary(deviceId: string) {
   const weekCompleted = weekRows.filter((r: any) => r.status === "completed");
   const weekMinutes = Math.round(
     weekRows.reduce((sum: number, r: any) => {
-      const seconds = Number(r.elapsed_seconds || 0) || Number(r.duration_minutes || 0) * 60;
+      const elapsed = Number(r.elapsed_seconds || 0);
+      const seconds = r.status === "completed"
+        ? (elapsed > 0 ? elapsed : Number(r.duration_minutes || 0) * 60)
+        : elapsed;
       return sum + seconds;
     }, 0) / 60
   );
@@ -254,7 +260,7 @@ async function deviceSummary(deviceId: string) {
   ));
 
   const allActiveDays = new Set(
-    rows.map((r: any) => localDateKey(r.completed_at || r.created_at))
+    activityRows.map((r: any) => localDateKey(r.completed_at || r.created_at))
   );
   let streakKey = allActiveDays.has(nowKey) ? nowKey : shiftDateKey(nowKey, -1);
   let streakDays = 0;
