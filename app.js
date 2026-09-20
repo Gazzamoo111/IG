@@ -19,6 +19,7 @@ let paused = false;
 let easier = false;
 let alternateVersion = 0;
 let wakeLock = null;
+let sessionStartLogged = false;
 
 const deviceId = getDeviceId();
 
@@ -96,6 +97,7 @@ function renderTime() {
 
 function renderGoal() {
   render(`
+    <button class="back-btn" id="back-to-time" type="button">← Back</button>
     <div class="eyebrow">${duration} minutes</div>
     <h1>What do you need?</h1>
     <p class="lead">Pick the outcome. MOVA selects the best tool from your kit.</p>
@@ -106,6 +108,8 @@ function renderGoal() {
       ${goalButton("whole_body", "Whole Body", "A balanced mix")}
     </div>
   `);
+
+  document.getElementById("back-to-time").addEventListener("click", renderTime);
 
   bind("[data-goal]", async (event) => {
     goal = event.currentTarget.dataset.goal;
@@ -146,6 +150,7 @@ function renderReady() {
   const stepCount = Array.isArray(run.steps) && run.steps.length ? run.steps.length : null;
 
   render(`
+    <button class="back-btn" id="back-to-goal" type="button">← Back</button>
     <div class="eyebrow">${duration} min · ${goalTitle}</div>
     <h1>Your session is ready.</h1>
     <p class="lead">MOVA picked this session for you. Start now, or change the time or equipment.</p>
@@ -166,13 +171,12 @@ function renderReady() {
     <div class="action-stack ready-actions">
       <button class="primary-btn" id="start-session">Start session</button>
       <button class="secondary-btn" id="change-session">Change time or equipment</button>
-      <button class="text-btn" id="change-goal">Change goal</button>
     </div>
   `);
 
+  document.getElementById("back-to-goal").addEventListener("click", renderGoal);
   document.getElementById("start-session").addEventListener("click", startSession);
   document.getElementById("change-session").addEventListener("click", renderSessionOptions);
-  document.getElementById("change-goal").addEventListener("click", renderGoal);
 }
 
 function equipmentOptions() {
@@ -205,6 +209,7 @@ async function renderSessionOptions() {
 
   function draw() {
     render(`
+      <button class="back-btn" id="option-back-top" type="button">← Back</button>
       <div class="eyebrow">${escapeHtml(goalTitle)}</div>
       <h1>Choose another session.</h1>
       <p class="lead">Keep the same goal and change the time, the equipment, or both.</p>
@@ -251,6 +256,7 @@ async function renderSessionOptions() {
       await refreshPreview();
     }));
 
+    document.getElementById("option-back-top").addEventListener("click", renderReady);
     document.getElementById("use-option").addEventListener("click", useOption);
     document.getElementById("option-back").addEventListener("click", renderReady);
   }
@@ -351,20 +357,22 @@ function totalSessionSeconds() {
 }
 
 async function startSession() {
-  try {
-    await api("session_started", { run_id: run.run_id });
-    sequence = sequenceFromRun();
-    currentIndex = 0;
-    elapsedSeconds = 0;
-    paused = false;
-    easier = false;
-    alternateVersion = 0;
-    document.body.classList.add("session-mode");
-    await requestWakeLock();
-    startPreCountdown();
-  } catch (error) {
-    showError(error.message);
-  }
+  sequence = sequenceFromRun();
+  currentIndex = 0;
+  elapsedSeconds = 0;
+  paused = false;
+  easier = false;
+  alternateVersion = 0;
+  sessionStartLogged = false;
+  document.body.classList.add("session-mode");
+  await requestWakeLock();
+  startPreCountdown();
+}
+
+function logSessionStarted() {
+  if (sessionStartLogged || !run?.run_id) return;
+  sessionStartLogged = true;
+  api("session_started", { run_id: run.run_id }).catch(() => {});
 }
 
 function startPreCountdown() {
@@ -406,6 +414,7 @@ function tickPlayer() {
   if (phase === "prestart") {
     phaseSeconds -= 1;
     if (phaseSeconds <= 0) {
+      logSessionStarted();
       beginMovement(0);
       return;
     }
@@ -460,12 +469,16 @@ function renderPlayerShell() {
         <button type="button" id="pause-btn">Pause</button>
         <button type="button" id="skip-btn">Skip</button>
       </div>
+      <div class="player-exit-row">
+        <button type="button" class="session-exit-btn" id="session-exit-btn" hidden>End session</button>
+      </div>
     </div>
   `);
 
   document.getElementById("easier-btn").addEventListener("click", toggleEasier);
   document.getElementById("pause-btn").addEventListener("click", togglePause);
   document.getElementById("skip-btn").addEventListener("click", skipMovement);
+  document.getElementById("session-exit-btn").addEventListener("click", handleSessionExit);
 }
 
 function variantFor(movement) {
@@ -522,6 +535,13 @@ function updatePlayerUI() {
   const overallRemaining = Math.max(0, totalSeconds - elapsedSeconds);
   const progress = Math.min(100, (elapsedSeconds / totalSeconds) * 100);
   const movement = sequence[currentIndex];
+  const pauseBtn = document.getElementById("pause-btn");
+  const exitBtn = document.getElementById("session-exit-btn");
+  if (pauseBtn) pauseBtn.disabled = false;
+  if (exitBtn) {
+    exitBtn.hidden = true;
+    exitBtn.textContent = "End session";
+  }
 
   document.getElementById("progress-fill").style.width = progress + "%";
   document.getElementById("overall-remaining").textContent = formatTime(overallRemaining);
@@ -535,6 +555,11 @@ function updatePlayerUI() {
     document.getElementById("stage-demo").innerHTML = `<div class="demo-kicker">STARTING</div><div class="demo-copy">Your session begins in a moment.</div>`;
     document.getElementById("stage-badge").textContent = "READY";
     document.getElementById("easier-btn").textContent = "Easier";
+    if (pauseBtn) pauseBtn.disabled = true;
+    if (exitBtn) {
+      exitBtn.hidden = false;
+      exitBtn.textContent = "Cancel";
+    }
     setControlsDisabled(true);
     return;
   }
@@ -548,6 +573,7 @@ function updatePlayerUI() {
     document.getElementById("stage-demo").innerHTML = `<div class="demo-kicker">TRANSITION</div><div class="demo-copy">Keep the same equipment. No swapping.</div>`;
     document.getElementById("stage-badge").textContent = "NEXT";
     document.getElementById("easier-btn").textContent = "Easier";
+    if (exitBtn) exitBtn.hidden = !paused;
     setControlsDisabled(true);
     return;
   }
@@ -560,6 +586,7 @@ function updatePlayerUI() {
   document.getElementById("stage-badge").textContent = variant.badge;
   document.getElementById("easier-btn").textContent = easier ? "Standard" : "Easier";
   renderStageMedia(movement, variant);
+  if (exitBtn) exitBtn.hidden = !paused;
 
   const easierBtn = document.getElementById("easier-btn");
   const skipBtn = document.getElementById("skip-btn");
@@ -586,6 +613,49 @@ function togglePause() {
   if (phase === "prestart") return;
   paused = !paused;
   updatePlayerUI();
+}
+
+async function handleSessionExit() {
+  if (phase === "prestart") {
+    clearPlayerTimer();
+    phase = "idle";
+    sessionStartLogged = false;
+    await releaseWakeLock();
+    document.body.classList.remove("session-mode");
+    renderReady();
+    return;
+  }
+
+  if (!paused || !["work", "transition"].includes(phase)) return;
+  if (!confirm("End this MOVA session? Your completed movement time will still be saved.")) return;
+
+  clearPlayerTimer();
+  await releaseWakeLock();
+
+  try {
+    await api("session_stopped", {
+      run_id: run.run_id,
+      elapsed_seconds: elapsedSeconds
+    });
+  } catch (error) {
+    showError(error.message);
+    return;
+  }
+
+  sessionStartLogged = false;
+  phase = "complete";
+  document.body.classList.remove("session-mode");
+  renderStopped();
+}
+
+function renderStopped() {
+  render(`
+    <div class="eyebrow">MOVA</div>
+    <h1>Session ended.</h1>
+    <p class="lead">Your movement time has been saved. You can choose another session whenever you're ready.</p>
+    <button class="primary-btn" id="again-after-stop">Choose another session</button>
+  `);
+  document.getElementById("again-after-stop").addEventListener("click", renderTime);
 }
 
 function skipMovement() {
@@ -677,6 +747,7 @@ function resetPlayerState() {
   paused = false;
   easier = false;
   alternateVersion = 0;
+  sessionStartLogged = false;
   releaseWakeLock();
 }
 
