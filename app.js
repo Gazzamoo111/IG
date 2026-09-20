@@ -617,34 +617,26 @@ function movementPreviewHtml(steps) {
 }
 
 function buildShowcaseRun() {
-  const base = "./media/showcase.html";
-  const demoStep = (order, name, cue, move, easierName, easierCue) => ({
-    order,
-    name,
-    cue,
-    easier_name: easierName,
-    easier_cue: easierCue,
-    duration_seconds: 42,
-    transition_seconds: order < 4 ? 4 : 0,
-    demo_asset_url: `${base}?move=${move}`,
-    easier_demo_asset_url: `${base}?move=${move}&variant=easier`,
-    alternate: null
-  });
-
   return {
     showcase_demo: true,
     run_id: "mova-showcase-local",
     equipment: "handle_band",
     equipment_label: "MOVA Handle Band",
-    title: "3-Min Visual Showcase",
+    title: "Handle Band Squat Showcase",
     level: 1,
     content_ready: true,
-    steps: [
-      demoStep(1, "Handle Band Squat", "Sit back, keep the chest tall, then stand strong.", "squat", "Shallow Band Squat", "Use a smaller comfortable range."),
-      demoStep(2, "Standing Band Row", "Pull the handles towards the ribs and squeeze between the shoulders.", "row", "Short-Range Band Row", "Use a shorter pull and keep the shoulders relaxed."),
-      demoStep(3, "Band Bicep Curl", "Keep the elbows close and curl with control.", "curl", "Light Band Curl", "Reduce the band tension and keep the range comfortable."),
-      demoStep(4, "Band Chest Press", "Press forward smoothly, keeping the ribs stacked.", "chest_press", "Short-Range Chest Press", "Press through a smaller comfortable range.")
-    ]
+    steps: [{
+      order: 1,
+      name: "Handle Band Squat",
+      cue: "Sit back, keep the chest tall, then stand strong.",
+      easier_name: null,
+      easier_cue: null,
+      duration_seconds: 180,
+      transition_seconds: 0,
+      demo_asset_url: "./media/mova-showcase-squat.mp4",
+      easier_demo_asset_url: null,
+      alternate: null
+    }]
   };
 }
 
@@ -1328,10 +1320,10 @@ function renderShowcaseCompletion() {
       <div class="completion-time">3:00</div>
       <div class="completion-label">DEMO COMPLETE</div>
       <h1>That’s the potential.</h1>
-      <p class="lead">This showcase uses the real MOVA player and session flow with concept exercise visuals. It is not recorded in MOVA analytics.</p>
+      <p class="lead">This showcase uses the real MOVA player and session flow with a polished example exercise video. It is not recorded in MOVA analytics.</p>
       <div class="showcase-note">
         <strong>Production direction</strong>
-        <span>The finished library can replace these concept visuals with the final consistent MOVA presenter clips without changing the player experience.</span>
+        <span>The full MOVA movement library can use this same video format and player experience.</span>
       </div>
       <div class="action-stack">
         <button class="primary-btn" id="showcase-again">Run showcase again</button>
