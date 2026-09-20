@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#0F1011"/>
+  <rect x="22" y="22" width="468" height="468" rx="94" fill="none" stroke="#25292B" stroke-width="4"/>
+  <image href="mova-logo.png" x="54" y="183" width="404" height="138" preserveAspectRatio="xMidYMid meet"/>
+  <circle cx="256" cy="390" r="7" fill="#C8FF31"/>
+</svg>
