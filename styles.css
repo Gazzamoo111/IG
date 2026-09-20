@@ -457,3 +457,33 @@ h1 {
 @media(max-width:370px){.option-equipment-grid{grid-template-columns:1fr}}
 
 .movement-frame,.movement-animation{width:100%;height:100%;border:0;display:block;object-fit:cover;background:#141617}
+
+
+/* Reversible navigation and session exit */
+.back-btn{
+  align-self:flex-start;
+  margin:0 0 18px;
+  padding:8px 0;
+  border:0;
+  background:transparent;
+  color:#C7CBCC;
+  font-size:14px;
+  font-weight:800;
+  cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+}
+.back-btn:active{opacity:.72}
+.player-exit-row{display:flex;justify-content:center;min-height:42px}
+.session-exit-btn{
+  border:0;
+  background:transparent;
+  color:#C8CDCF;
+  min-height:42px;
+  padding:0 16px;
+  font-size:13px;
+  font-weight:800;
+  cursor:pointer;
+  text-decoration:underline;
+  text-underline-offset:4px;
+}
+.session-exit-btn:hover{color:var(--danger)}
