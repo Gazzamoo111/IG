@@ -11,6 +11,11 @@ const OFFLINE_QUEUE_KEY = "mova_offline_queue_v1";
 let installPrompt = null;
 let syncInFlight = false;
 
+const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const isStandalone = window.matchMedia?.("(display-mode: standalone)")?.matches ||
+  navigator.standalone === true;
+
 let kit = null;
 let duration = null;
 let goal = null;
@@ -344,11 +349,44 @@ function updateNetworkStatus() {
   el.hidden = true;
 }
 
+function cacheSessionMedia(steps) {
+  if (!navigator.onLine || !Array.isArray(steps) || !("serviceWorker" in navigator)) return;
+  const urls = Array.from(new Set(
+    steps.flatMap(step => [
+      step.demo_asset_url,
+      step.easier_demo_asset_url,
+      step.alternate?.demo_asset_url
+    ]).filter(Boolean)
+  ));
+  if (!urls.length) return;
+
+  navigator.serviceWorker.ready
+    .then(registration => registration.active?.postMessage({ type: "CACHE_MEDIA", urls }))
+    .catch(() => {});
+}
+
 async function requestInstall() {
-  if (!installPrompt) return;
-  installPrompt.prompt();
-  try { await installPrompt.userChoice; } catch (_) {}
-  installPrompt = null;
+  if (installPrompt) {
+    installPrompt.prompt();
+    try { await installPrompt.userChoice; } catch (_) {}
+    installPrompt = null;
+    return;
+  }
+  if (isIos && !isStandalone) renderInstallHelp();
+}
+
+function renderInstallHelp() {
+  render(`
+    <button class="back-btn" id="install-back" type="button">← Back</button>
+    <div class="eyebrow">Install MOVA</div>
+    <h1>Add MOVA to your Home Screen.</h1>
+    <div class="install-card">
+      <div class="install-step"><strong>1</strong><span>Tap the <b>Share</b> button in Safari.</span></div>
+      <div class="install-step"><strong>2</strong><span>Choose <b>Add to Home Screen</b>.</span></div>
+      <div class="install-step"><strong>3</strong><span>Tap <b>Add</b>. MOVA will open like an app.</span></div>
+    </div>
+  `);
+  document.getElementById("install-back").addEventListener("click", renderHome);
 }
 
 function registerPwa() {
@@ -473,13 +511,15 @@ function renderHome() {
     <div class="action-stack home-actions">
       <button class="primary-btn" id="home-start">Start a session</button>
       <button class="secondary-btn" id="home-progress">My progress</button>
-      ${installPrompt ? '<button class="text-btn" id="install-mova">Install MOVA</button>' : ""}
+      ${(installPrompt || (isIos && !isStandalone)) ? '<button class="text-btn" id="install-mova">Install MOVA</button>' : ""}
     </div>
   `);
 
   document.getElementById("home-start").addEventListener("click", renderTime);
   document.getElementById("home-progress").addEventListener("click", renderProgress);
-  if (installPrompt) document.getElementById("install-mova")?.addEventListener("click", requestInstall);
+  if (installPrompt || (isIos && !isStandalone)) {
+    document.getElementById("install-mova")?.addEventListener("click", requestInstall);
+  }
 }
 
 function renderProgress() {
@@ -575,6 +615,7 @@ function movementPreviewHtml(steps) {
 }
 
 function renderReady() {
+  cacheSessionMedia(run?.steps);
   const goalTitle = {
     loosen_up: "Loosen Up",
     get_moving: "Get Moving",
