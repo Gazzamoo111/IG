@@ -1,4 +1,4 @@
-const STATIC_CACHE = "mova-static-v7";
+const STATIC_CACHE = "mova-static-v8";
 const MEDIA_CACHE = "mova-media-v1";
 
 const CORE = [
