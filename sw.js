@@ -1,4 +1,4 @@
-const STATIC_CACHE = "mova-static-v5";
+const STATIC_CACHE = "mova-static-v6";
 const MEDIA_CACHE = "mova-media-v1";
 
 const CORE = [
@@ -117,13 +117,18 @@ self.addEventListener("fetch", event => {
 
   const url = new URL(request.url);
 
-  if (request.mode === "navigate") {
-    event.respondWith(navigationResponse(request));
+  if (url.origin === self.location.origin && url.pathname.endsWith("/media/motion.html")) {
+    event.respondWith(motionResponse(request));
     return;
   }
 
-  if (url.origin === self.location.origin && url.pathname.endsWith("/media/motion.html")) {
-    event.respondWith(motionResponse(request));
+  if (url.origin === self.location.origin && url.pathname.endsWith("/media/showcase.html")) {
+    event.respondWith(staticResponse(request));
+    return;
+  }
+
+  if (request.mode === "navigate") {
+    event.respondWith(navigationResponse(request));
     return;
   }
 
