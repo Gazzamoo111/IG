@@ -33,6 +33,8 @@ let alternateVersion = 0;
 let wakeLock = null;
 let sessionStartLogged = false;
 let progressSummary = null;
+let showcaseReturnRun = null;
+let showcaseReturnGoal = null;
 
 const deviceId = getDeviceId();
 
@@ -614,6 +616,60 @@ function movementPreviewHtml(steps) {
   `;
 }
 
+function buildShowcaseRun() {
+  const base = "./media/showcase.html";
+  const demoStep = (order, name, cue, move, easierName, easierCue) => ({
+    order,
+    name,
+    cue,
+    easier_name: easierName,
+    easier_cue: easierCue,
+    duration_seconds: 42,
+    transition_seconds: order < 4 ? 4 : 0,
+    demo_asset_url: `${base}?move=${move}`,
+    easier_demo_asset_url: `${base}?move=${move}&variant=easier`,
+    alternate: null
+  });
+
+  return {
+    showcase_demo: true,
+    run_id: "mova-showcase-local",
+    equipment: "handle_band",
+    equipment_label: "MOVA Handle Band",
+    title: "3-Min Visual Showcase",
+    level: 1,
+    content_ready: true,
+    steps: [
+      demoStep(1, "Handle Band Squat", "Sit back, keep the chest tall, then stand strong.", "squat", "Shallow Band Squat", "Use a smaller comfortable range."),
+      demoStep(2, "Standing Band Row", "Pull the handles towards the ribs and squeeze between the shoulders.", "row", "Short-Range Band Row", "Use a shorter pull and keep the shoulders relaxed."),
+      demoStep(3, "Band Bicep Curl", "Keep the elbows close and curl with control.", "curl", "Light Band Curl", "Reduce the band tension and keep the range comfortable."),
+      demoStep(4, "Band Chest Press", "Press forward smoothly, keeping the ribs stacked.", "chest_press", "Short-Range Chest Press", "Press through a smaller comfortable range.")
+    ]
+  };
+}
+
+function startShowcaseDemo() {
+  if (duration !== 3 || run?.showcase_demo) return;
+  showcaseReturnRun = run;
+  showcaseReturnGoal = goal;
+  run = buildShowcaseRun();
+  goal = "whole_body";
+  startSession();
+}
+
+function leaveShowcase() {
+  clearPlayerTimer();
+  releaseWakeLock();
+  document.body.classList.remove("session-mode");
+  run = showcaseReturnRun;
+  goal = showcaseReturnGoal;
+  showcaseReturnRun = null;
+  showcaseReturnGoal = null;
+  phase = "idle";
+  sessionStartLogged = false;
+  renderReady();
+}
+
 function renderReady() {
   cacheSessionMedia(run?.steps);
   const goalTitle = {
@@ -646,12 +702,14 @@ function renderReady() {
 
     <div class="action-stack ready-actions">
       <button class="primary-btn" id="start-session">Start session</button>
+      ${duration === 3 && !run?.showcase_demo ? '<button class="showcase-btn" id="showcase-demo" type="button"><span>Visual showcase</span><small>See what the finished exercise experience can look like</small></button>' : ""}
       <button class="secondary-btn" id="change-session">Change time or equipment</button>
     </div>
   `);
 
   document.getElementById("back-to-goal").addEventListener("click", renderGoal);
   document.getElementById("start-session").addEventListener("click", startSession);
+  document.getElementById("showcase-demo")?.addEventListener("click", startShowcaseDemo);
   document.getElementById("change-session").addEventListener("click", renderSessionOptions);
 }
 
@@ -870,6 +928,7 @@ async function startSession() {
 function logSessionStarted() {
   if (sessionStartLogged || !run?.run_id) return;
   sessionStartLogged = true;
+  if (run?.showcase_demo) return;
   api("session_started", { run_id: run.run_id }).catch(() => {});
 }
 
@@ -944,7 +1003,8 @@ function tickPlayer() {
 
 function renderPlayerShell() {
   render(`
-    <div class="player">
+    <div class="player ${run?.showcase_demo ? "showcase-player" : ""}">
+      ${run?.showcase_demo ? '<div class="showcase-ribbon"><span>VISUAL SHOWCASE</span><small>Demo only · not recorded</small></div>' : ""}
       <div class="player-top">
         <span id="player-meta"></span>
         <span id="overall-remaining"></span>
@@ -1018,7 +1078,7 @@ function renderStageMedia(movement, variant) {
   if (!stage) return;
   if (variant.demo) {
     const src = escapeHtml(variant.demo);
-    if (variant.demo.includes("/media/motion.html")) {
+    if (variant.demo.includes("/media/motion.html") || variant.demo.includes("/media/showcase.html")) {
       stage.innerHTML = `<iframe class="movement-frame" src="${src}" title="${escapeHtml(variant.label)} demonstration" loading="eager"></iframe>`;
     } else if (/\.svg(?:\?|$)/i.test(variant.demo)) {
       stage.innerHTML = `<img class="movement-animation" src="${src}" alt="${escapeHtml(variant.label)} demonstration">`;
@@ -1150,16 +1210,22 @@ function restartMovement() {
 function nextMovement() {
   if (phase !== "work" || paused || currentIndex >= sequence.length - 1) return;
   const current = sequence[currentIndex];
-  api("movement_skipped", {
-    run_id: run.run_id,
-    movement_index: currentIndex + 1,
-    movement_label: current.label
-  }).catch(() => {});
+  if (!run?.showcase_demo) {
+    api("movement_skipped", {
+      run_id: run.run_id,
+      movement_index: currentIndex + 1,
+      movement_label: current.label
+    }).catch(() => {});
+  }
   beginTransition();
 }
 
 async function handleSessionExit() {
   if (phase === "prestart") {
+    if (run?.showcase_demo) {
+      leaveShowcase();
+      return;
+    }
     clearPlayerTimer();
     phase = "idle";
     sessionStartLogged = false;
@@ -1174,6 +1240,11 @@ async function handleSessionExit() {
 
   clearPlayerTimer();
   await releaseWakeLock();
+
+  if (run?.showcase_demo) {
+    leaveShowcase();
+    return;
+  }
 
   try {
     await api("session_stopped", {
@@ -1212,11 +1283,13 @@ function skipMovement() {
   const current = sequence[currentIndex];
   if (!current.altLabel || alternateVersion) return;
 
-  api("movement_skipped", {
-    run_id: run.run_id,
-    movement_index: currentIndex + 1,
-    movement_label: current.label
-  }).catch(() => {});
+  if (!run?.showcase_demo) {
+    api("movement_skipped", {
+      run_id: run.run_id,
+      movement_index: currentIndex + 1,
+      movement_label: current.label
+    }).catch(() => {});
+  }
 
   alternateVersion = 1;
   easier = false;
@@ -1231,6 +1304,12 @@ async function completeSession() {
   updatePlayerUI();
   await releaseWakeLock();
 
+  if (run?.showcase_demo) {
+    document.body.classList.remove("session-mode");
+    renderShowcaseCompletion();
+    return;
+  }
+
   try {
     await api("session_completed", {
       run_id: run.run_id,
@@ -1241,6 +1320,33 @@ async function completeSession() {
   await refreshProgress();
   document.body.classList.remove("session-mode");
   renderCompletion();
+}
+
+function renderShowcaseCompletion() {
+  render(`
+    <div class="showcase-complete">
+      <div class="eyebrow">Visual showcase</div>
+      <div class="completion-time">3:00</div>
+      <div class="completion-label">DEMO COMPLETE</div>
+      <h1>That’s the potential.</h1>
+      <p class="lead">This showcase uses the real MOVA player and session flow with concept exercise visuals. It is not recorded in MOVA analytics.</p>
+      <div class="showcase-note">
+        <strong>Production direction</strong>
+        <span>The finished library can replace these concept visuals with the final consistent MOVA presenter clips without changing the player experience.</span>
+      </div>
+      <div class="action-stack">
+        <button class="primary-btn" id="showcase-again">Run showcase again</button>
+        <button class="secondary-btn" id="showcase-back">Back to real session</button>
+      </div>
+    </div>
+  `);
+
+  document.getElementById("showcase-again").addEventListener("click", () => {
+    run = buildShowcaseRun();
+    goal = "whole_body";
+    startSession();
+  });
+  document.getElementById("showcase-back").addEventListener("click", leaveShowcase);
 }
 
 function renderCompletion() {
