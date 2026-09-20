@@ -1,4 +1,4 @@
-const STATIC_CACHE = "mova-static-v2";
+const STATIC_CACHE = "mova-static-v3";
 const MEDIA_CACHE = "mova-media-v1";
 
 const CORE = [
@@ -88,6 +88,27 @@ async function mediaResponse(request) {
     return cached || Response.error();
   }
 }
+
+self.addEventListener("message", event => {
+  if (event.data?.type !== "CACHE_MEDIA" || !Array.isArray(event.data.urls)) return;
+  const urls = event.data.urls.slice(0, 24);
+  event.waitUntil((async () => {
+    const cache = await caches.open(MEDIA_CACHE);
+    for (const url of urls) {
+      try {
+        const parsed = new URL(url, self.location.origin);
+        if (parsed.pathname.endsWith("/media/motion.html")) continue;
+        const request = new Request(parsed.href, { mode: parsed.origin === self.location.origin ? "same-origin" : "cors" });
+        const existing = await cache.match(request);
+        if (existing) continue;
+        const response = await fetch(request);
+        if (response.ok || response.type === "opaque") {
+          await cache.put(request, response.clone());
+        }
+      } catch (_) {}
+    }
+  })());
+});
 
 self.addEventListener("fetch", event => {
   const request = event.request;
