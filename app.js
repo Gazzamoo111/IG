@@ -653,7 +653,6 @@ function startShowcaseDemo() {
   showcaseReturnRun = run;
   showcaseReturnGoal = goal;
   run = buildShowcaseRun();
-  goal = "whole_body";
   startSession();
 }
 
@@ -1343,7 +1342,6 @@ function renderShowcaseCompletion() {
 
   document.getElementById("showcase-again").addEventListener("click", () => {
     run = buildShowcaseRun();
-    goal = "whole_body";
     startSession();
   });
   document.getElementById("showcase-back").addEventListener("click", leaveShowcase);
