@@ -20,6 +20,7 @@ let easier = false;
 let alternateVersion = 0;
 let wakeLock = null;
 let sessionStartLogged = false;
+let progressSummary = null;
 
 const deviceId = getDeviceId();
 
@@ -67,17 +68,103 @@ async function boot() {
   try {
     const data = await api("scan");
     kit = data.kit;
+    progressSummary = data.summary || null;
     footer.textContent = `${kit.code} · MOVA`;
-    renderTime();
+    if (progressSummary?.returning_user) renderHome();
+    else renderTime();
   } catch (error) {
     showError(error.message);
   }
+}
+
+function goalLabel(value) {
+  return {
+    loosen_up: "Loosen Up",
+    get_moving: "Get Moving",
+    get_stronger: "Get Stronger",
+    whole_body: "Whole Body"
+  }[value] || "Movement";
+}
+
+function equipmentName(value) {
+  return {
+    bar: "MOVA Bar",
+    handle_band: "Handle Band",
+    mini_band: "Mini Band",
+    bodyweight: "No Kit"
+  }[value] || "MOVA";
+}
+
+async function refreshProgress() {
+  try {
+    const data = await api("device_summary");
+    progressSummary = data.summary || progressSummary;
+  } catch (_) {}
+  return progressSummary;
+}
+
+function progressCardsHtml(summary = progressSummary) {
+  const week = summary?.week || {};
+  return `
+    <div class="progress-cards">
+      <div class="progress-card"><strong>${Number(week.movement_minutes || 0)}</strong><span>MIN THIS WEEK</span></div>
+      <div class="progress-card"><strong>${Number(week.sessions || 0)}</strong><span>SESSIONS</span></div>
+      <div class="progress-card"><strong>${Number(week.streak_days || 0)}</strong><span>DAY STREAK</span></div>
+    </div>
+  `;
+}
+
+function renderHome() {
+  resetPlayerState();
+  document.body.classList.remove("session-mode");
+  const last = progressSummary?.last_session;
+  const lastCopy = last
+    ? `Last session: <strong>${Number(last.duration_minutes)} min · ${escapeHtml(goalLabel(last.goal))}</strong>`
+    : "Your next session is ready when you are.";
+
+  render(`
+    <div class="safety"><span class="safety-dot"></span>Parked. Secure. Clear. Free to move.</div>
+    <div class="eyebrow">Welcome back</div>
+    <h1>Ready to move?</h1>
+    <p class="lead home-last">${lastCopy}</p>
+    ${progressCardsHtml()}
+    <div class="action-stack home-actions">
+      <button class="primary-btn" id="home-start">Start a session</button>
+      <button class="secondary-btn" id="home-progress">My progress</button>
+    </div>
+  `);
+
+  document.getElementById("home-start").addEventListener("click", renderTime);
+  document.getElementById("home-progress").addEventListener("click", renderProgress);
+}
+
+function renderProgress() {
+  const week = progressSummary?.week || {};
+  render(`
+    <button class="back-btn" id="progress-back" type="button">← Back</button>
+    <div class="eyebrow">My MOVA</div>
+    <h1>Your movement.</h1>
+    <p class="lead">A simple view of the movement recorded on this device.</p>
+    ${progressCardsHtml()}
+    <div class="progress-detail-card">
+      <div class="progress-detail-row"><span>Active days this week</span><strong>${Number(week.active_days || 0)}</strong></div>
+      <div class="progress-detail-row"><span>Total completed sessions</span><strong>${Number(progressSummary?.total_completed_sessions || 0)}</strong></div>
+      <div class="progress-detail-row"><span>Most-used goal this week</span><strong>${week.favourite_goal ? escapeHtml(goalLabel(week.favourite_goal)) : "—"}</strong></div>
+    </div>
+    <div class="privacy-note">Progress is linked to this device for the demo. No name or personal health profile is required.</div>
+    <div class="action-stack">
+      <button class="primary-btn" id="progress-start">Start a session</button>
+    </div>
+  `);
+  document.getElementById("progress-back").addEventListener("click", renderHome);
+  document.getElementById("progress-start").addEventListener("click", renderTime);
 }
 
 function renderTime() {
   resetPlayerState();
   document.body.classList.remove("session-mode");
   render(`
+    ${progressSummary?.returning_user ? '<button class="back-btn" id="time-home" type="button">← Home</button>' : ""}
     <div class="safety"><span class="safety-dot"></span>Parked. Secure. Clear. Free to move.</div>
     <h1>How much time have you got?</h1>
     <p class="lead">Pick the time. MOVA handles the rest.</p>
@@ -87,6 +174,10 @@ function renderTime() {
       <button class="time-btn" data-time="10">10<span>MIN</span></button>
     </div>
   `);
+
+  if (progressSummary?.returning_user) {
+    document.getElementById("time-home").addEventListener("click", renderHome);
+  }
 
   bind("[data-time]", (event) => {
     duration = Number(event.currentTarget.dataset.time);
@@ -356,6 +447,28 @@ function totalSessionSeconds() {
   return sequence.reduce((sum, step) => sum + step.seconds + step.transition, 0);
 }
 
+function plannedPositionSeconds() {
+  if (!sequence.length) return 0;
+  if (phase === "complete") return totalSessionSeconds();
+  if (phase === "prestart" || phase === "idle") return 0;
+
+  let done = 0;
+  for (let i = 0; i < currentIndex; i++) {
+    done += sequence[i].seconds + sequence[i].transition;
+  }
+
+  const current = sequence[currentIndex];
+  if (!current) return done;
+
+  if (phase === "work") {
+    done += Math.max(0, current.seconds - phaseSeconds);
+  } else if (phase === "transition") {
+    done += current.seconds + Math.max(0, current.transition - phaseSeconds);
+  }
+
+  return Math.min(totalSessionSeconds(), done);
+}
+
 async function startSession() {
   sequence = sequenceFromRun();
   currentIndex = 0;
@@ -457,6 +570,7 @@ function renderPlayerShell() {
         <div class="timer" id="movement-timer"></div>
         <div class="stage-demo" id="stage-demo"></div>
         <div class="stage-badge" id="stage-badge">STANDARD</div>
+        <div class="pause-overlay" id="pause-overlay" hidden><strong>Paused</strong><span>Resume when you're ready.</span></div>
       </div>
 
       <div>
@@ -467,7 +581,12 @@ function renderPlayerShell() {
       <div class="player-controls">
         <button type="button" id="easier-btn">Easier</button>
         <button type="button" id="pause-btn">Pause</button>
-        <button type="button" id="skip-btn">Skip</button>
+        <button type="button" id="skip-btn">Alternate</button>
+      </div>
+      <div class="movement-nav">
+        <button type="button" id="previous-btn">Previous</button>
+        <button type="button" id="restart-btn">Restart</button>
+        <button type="button" id="next-btn">Next</button>
       </div>
       <div class="player-exit-row">
         <button type="button" class="session-exit-btn" id="session-exit-btn" hidden>End session</button>
@@ -478,6 +597,9 @@ function renderPlayerShell() {
   document.getElementById("easier-btn").addEventListener("click", toggleEasier);
   document.getElementById("pause-btn").addEventListener("click", togglePause);
   document.getElementById("skip-btn").addEventListener("click", skipMovement);
+  document.getElementById("previous-btn").addEventListener("click", previousMovement);
+  document.getElementById("restart-btn").addEventListener("click", restartMovement);
+  document.getElementById("next-btn").addEventListener("click", nextMovement);
   document.getElementById("session-exit-btn").addEventListener("click", handleSessionExit);
 }
 
@@ -532,11 +654,17 @@ function updatePlayerUI() {
   if (!meta) return;
 
   const totalSeconds = totalSessionSeconds() || duration * 60;
-  const overallRemaining = Math.max(0, totalSeconds - elapsedSeconds);
-  const progress = Math.min(100, (elapsedSeconds / totalSeconds) * 100);
+  const plannedPosition = plannedPositionSeconds();
+  const overallRemaining = Math.max(0, totalSeconds - plannedPosition);
+  const progress = Math.min(100, (plannedPosition / totalSeconds) * 100);
   const movement = sequence[currentIndex];
   const pauseBtn = document.getElementById("pause-btn");
   const exitBtn = document.getElementById("session-exit-btn");
+  const pauseOverlay = document.getElementById("pause-overlay");
+  const timer = document.getElementById("movement-timer");
+  const previousBtn = document.getElementById("previous-btn");
+  const restartBtn = document.getElementById("restart-btn");
+  const nextBtn = document.getElementById("next-btn");
   if (pauseBtn) pauseBtn.disabled = false;
   if (exitBtn) {
     exitBtn.hidden = true;
@@ -546,6 +674,11 @@ function updatePlayerUI() {
   document.getElementById("progress-fill").style.width = progress + "%";
   document.getElementById("overall-remaining").textContent = formatTime(overallRemaining);
   document.getElementById("pause-btn").textContent = paused ? "Resume" : "Pause";
+  if (pauseOverlay) pauseOverlay.hidden = !paused;
+  if (timer) timer.classList.toggle("timer-urgent", (phase === "work" || phase === "transition") && phaseSeconds <= 3 && !paused);
+  if (previousBtn) previousBtn.disabled = phase !== "work" || paused || currentIndex <= 0;
+  if (restartBtn) restartBtn.disabled = phase !== "work" || paused;
+  if (nextBtn) nextBtn.disabled = phase !== "work" || paused || currentIndex >= sequence.length - 1;
 
   if (phase === "prestart") {
     meta.textContent = `${duration} MIN · ${run.equipment_label}`;
@@ -568,9 +701,9 @@ function updatePlayerUI() {
     const next = sequence[currentIndex + 1];
     meta.textContent = `${currentIndex + 1} / ${sequence.length} COMPLETE`;
     document.getElementById("movement-timer").innerHTML = `<strong>${phaseSeconds}</strong><small>NEXT</small>`;
-    document.getElementById("movement-title").textContent = "Next up";
-    document.getElementById("movement-cue").textContent = next.label;
-    document.getElementById("stage-demo").innerHTML = `<div class="demo-kicker">TRANSITION</div><div class="demo-copy">Keep the same equipment. No swapping.</div>`;
+    document.getElementById("movement-title").textContent = `Next: ${next.label}`;
+    document.getElementById("movement-cue").textContent = "Get ready. Keep the same equipment.";
+    renderStageMedia(next, { label: next.label, cue: next.cue, demo: next.demo, badge: "NEXT" });
     document.getElementById("stage-badge").textContent = "NEXT";
     document.getElementById("easier-btn").textContent = "Easier";
     if (exitBtn) exitBtn.hidden = !paused;
@@ -615,6 +748,31 @@ function togglePause() {
   updatePlayerUI();
 }
 
+function previousMovement() {
+  if (phase !== "work" || paused || currentIndex <= 0) return;
+  beginMovement(currentIndex - 1);
+}
+
+function restartMovement() {
+  if (phase !== "work" || paused) return;
+  phaseSeconds = sequence[currentIndex].seconds;
+  easier = false;
+  alternateVersion = 0;
+  vibrate(30);
+  updatePlayerUI();
+}
+
+function nextMovement() {
+  if (phase !== "work" || paused || currentIndex >= sequence.length - 1) return;
+  const current = sequence[currentIndex];
+  api("movement_skipped", {
+    run_id: run.run_id,
+    movement_index: currentIndex + 1,
+    movement_label: current.label
+  }).catch(() => {});
+  beginTransition();
+}
+
 async function handleSessionExit() {
   if (phase === "prestart") {
     clearPlayerTimer();
@@ -648,14 +806,20 @@ async function handleSessionExit() {
   renderStopped();
 }
 
-function renderStopped() {
+async function renderStopped() {
+  await refreshProgress();
   render(`
     <div class="eyebrow">MOVA</div>
     <h1>Session ended.</h1>
-    <p class="lead">Your movement time has been saved. You can choose another session whenever you're ready.</p>
-    <button class="primary-btn" id="again-after-stop">Choose another session</button>
+    <p class="lead">${formatTime(elapsedSeconds)} of movement time was saved.</p>
+    ${progressCardsHtml()}
+    <div class="action-stack">
+      <button class="primary-btn" id="again-after-stop">Choose another session</button>
+      <button class="secondary-btn" id="progress-after-stop">My progress</button>
+    </div>
   `);
   document.getElementById("again-after-stop").addEventListener("click", renderTime);
+  document.getElementById("progress-after-stop").addEventListener("click", renderProgress);
 }
 
 function skipMovement() {
@@ -678,7 +842,7 @@ function skipMovement() {
 async function completeSession() {
   clearPlayerTimer();
   phase = "complete";
-  elapsedSeconds = totalSessionSeconds() || duration * 60;
+  if (!elapsedSeconds) elapsedSeconds = totalSessionSeconds() || duration * 60;
   updatePlayerUI();
   await releaseWakeLock();
 
@@ -689,19 +853,30 @@ async function completeSession() {
     });
   } catch (_) {}
 
+  await refreshProgress();
   document.body.classList.remove("session-mode");
-  renderFeedback();
+  renderCompletion();
 }
 
-function renderFeedback() {
+function renderCompletion() {
+  const week = progressSummary?.week || {};
   render(`
-    <div class="eyebrow">Done</div>
-    <h1>${duration} minutes complete.</h1>
-    <p class="lead">How did that session feel?</p>
-    <div class="feedback-grid">
-      <button class="feedback-btn" data-feedback="too_easy">Too easy</button>
-      <button class="feedback-btn primary-btn" data-feedback="about_right">About right</button>
-      <button class="feedback-btn" data-feedback="too_hard">Too hard</button>
+    <div class="completion-hero">
+      <div class="eyebrow">Session complete</div>
+      <div class="completion-time">${formatTime(elapsedSeconds)}</div>
+      <div class="completion-label">MOVED</div>
+      <h1>Nice work.</h1>
+      <p class="lead">${escapeHtml(goalLabel(goal))} · ${escapeHtml(run.equipment_label)}</p>
+    </div>
+    ${progressCardsHtml()}
+    <div class="completion-week">You're at <strong>${Number(week.movement_minutes || 0)} movement minutes</strong> this week.</div>
+    <div class="feedback-section">
+      <div class="feedback-title">How did that session feel?</div>
+      <div class="feedback-grid">
+        <button class="feedback-btn" data-feedback="too_easy">Too easy</button>
+        <button class="feedback-btn primary-btn" data-feedback="about_right">About right</button>
+        <button class="feedback-btn" data-feedback="too_hard">Too hard</button>
+      </div>
     </div>
   `);
 
@@ -713,13 +888,20 @@ function renderFeedback() {
 }
 
 function renderDone() {
+  const week = progressSummary?.week || {};
   render(`
     <div class="eyebrow">MOVA</div>
     <h1>Done.</h1>
-    <p class="lead">Your feedback helps MOVA choose better sessions next time.</p>
-    <button class="primary-btn" id="again">Move again</button>
+    <p class="lead">You've logged ${Number(week.sessions || 0)} session${Number(week.sessions || 0) === 1 ? "" : "s"} and ${Number(week.movement_minutes || 0)} movement minutes this week.</p>
+    <div class="action-stack">
+      <button class="primary-btn" id="again">Move again</button>
+      <button class="secondary-btn" id="done-progress">My progress</button>
+      <button class="text-btn" id="done-home">Home</button>
+    </div>
   `);
   document.getElementById("again").addEventListener("click", renderTime);
+  document.getElementById("done-progress").addEventListener("click", renderProgress);
+  document.getElementById("done-home").addEventListener("click", renderHome);
 }
 
 function formatTime(seconds) {
