@@ -1,4 +1,4 @@
-const STATIC_CACHE = "mova-static-v1";
+const STATIC_CACHE = "mova-static-v2";
 const MEDIA_CACHE = "mova-media-v1";
 
 const CORE = [
@@ -45,8 +45,6 @@ async function navigationResponse(request) {
 
 async function motionResponse(request) {
   const base = await caches.match("./media/motion.html");
-  if (!navigator.onLine && base) return base;
-
   try {
     const response = await fetch(request);
     if (response.ok) {
