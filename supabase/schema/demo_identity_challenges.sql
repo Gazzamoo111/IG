@@ -75,6 +75,19 @@ create index if not exists mova_participants_fleet_idx
 create index if not exists mova_challenges_status_dates_idx
   on public.mova_challenges(status, starts_at, ends_at);
 
+create index if not exists mova_challenge_fleets_fleet_idx
+  on public.mova_challenge_fleets(fleet_id);
+
+create index if not exists mova_challenge_participants_participant_idx
+  on public.mova_challenge_participants(participant_id);
+
+create index if not exists mova_challenges_owner_fleet_idx
+  on public.mova_challenges(owner_fleet_id)
+  where owner_fleet_id is not null;
+
+create index if not exists mova_participant_devices_device_idx
+  on public.mova_participant_devices(device_id);
+
 alter table public.mova_participants enable row level security;
 alter table public.mova_participant_devices enable row level security;
 alter table public.mova_challenges enable row level security;
