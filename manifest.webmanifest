@@ -1,9 +1,25 @@
 {
+  "id": "./",
   "name": "MOVA",
   "short_name": "MOVA",
-  "start_url": ".",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
+  "orientation": "portrait-primary",
   "background_color": "#0F1011",
   "theme_color": "#0F1011",
-  "description": "Movement made accessible."
+  "description": "Movement made accessible.",
+  "categories": [
+    "health",
+    "fitness",
+    "productivity"
+  ],
+  "icons": [
+    {
+      "src": "mova-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
 }
