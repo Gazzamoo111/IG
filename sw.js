@@ -1,4 +1,4 @@
-const STATIC_CACHE = "mova-static-v4";
+const STATIC_CACHE = "mova-static-v5";
 const MEDIA_CACHE = "mova-media-v1";
 
 const CORE = [
@@ -9,7 +9,8 @@ const CORE = [
   "./manifest.webmanifest",
   "./mova-logo.png",
   "./mova-icon.svg",
-  "./media/motion.html"
+  "./media/motion.html",
+  "./media/showcase.html"
 ];
 
 self.addEventListener("install", event => {
