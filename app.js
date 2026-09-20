@@ -2,7 +2,14 @@ const API = "https://nslfyglqamrhbqfdwftr.supabase.co/functions/v1/mova-scan";
 const app = document.getElementById("app");
 const footer = document.getElementById("kit-footer");
 const params = new URLSearchParams(location.search);
-const token = params.get("t");
+const tokenFromUrl = params.get("t");
+if (tokenFromUrl) localStorage.setItem("mova_last_token", tokenFromUrl);
+const token = tokenFromUrl || localStorage.getItem("mova_last_token");
+
+const OFFLINE_PACK_KEY = "mova_offline_pack_v1";
+const OFFLINE_QUEUE_KEY = "mova_offline_queue_v1";
+let installPrompt = null;
+let syncInFlight = false;
 
 let kit = null;
 let duration = null;
@@ -33,15 +40,334 @@ function getDeviceId() {
   return id;
 }
 
-async function api(action, payload = {}) {
-  const response = await fetch(API, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token, device_id: deviceId, action, ...payload })
-  });
+function readJson(key, fallback) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || "null");
+    return value ?? fallback;
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function writeJson(key, value) {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch (_) {}
+}
+
+function getOfflinePack() {
+  const pack = readJson(OFFLINE_PACK_KEY, null);
+  return pack?.token === token ? pack : null;
+}
+
+function getOfflineQueue() {
+  return readJson(OFFLINE_QUEUE_KEY, []);
+}
+
+function setOfflineQueue(queue) {
+  writeJson(OFFLINE_QUEUE_KEY, queue);
+  updateNetworkStatus();
+}
+
+function networkError(message = "Network unavailable") {
+  const error = new Error(message);
+  error.movaNetwork = true;
+  return error;
+}
+
+async function networkApi(action, payload = {}) {
+  let response;
+  try {
+    response = await fetch(API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, device_id: deviceId, action, ...payload })
+    });
+  } catch (_) {
+    throw networkError();
+  }
+
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || "MOVA could not complete that request.");
   return data;
+}
+
+function offlineEquipmentOrder(goalValue) {
+  return {
+    loosen_up: ["handle_band", "mini_band", "bar", "bodyweight"],
+    get_moving: ["mini_band", "handle_band", "bar", "bodyweight"],
+    get_stronger: ["bar", "handle_band", "mini_band", "bodyweight"],
+    whole_body: ["bar", "handle_band", "mini_band", "bodyweight"]
+  }[goalValue] || ["bar", "handle_band", "mini_band", "bodyweight"];
+}
+
+function cachedSession(durationValue, goalValue, equipmentValue = null) {
+  const pack = getOfflinePack();
+  if (!pack?.sessions?.length) return null;
+  const candidates = pack.sessions.filter(session =>
+    Number(session.duration) === Number(durationValue) &&
+    session.goal === goalValue &&
+    session.content_ready
+  );
+  if (!candidates.length) return null;
+  if (equipmentValue) return candidates.find(session => session.equipment === equipmentValue) || null;
+
+  const order = offlineEquipmentOrder(goalValue);
+  const ranked = order.map(eq => candidates.find(session => session.equipment === eq)).filter(Boolean);
+  if (!ranked.length) return candidates[0];
+
+  const last = progressSummary?.last_session;
+  if (ranked.length > 1 && last?.goal === goalValue && last?.equipment === ranked[0].equipment) {
+    return ranked[1];
+  }
+  return ranked[0];
+}
+
+function updateOfflineProgress(status, elapsed) {
+  progressSummary ||= {
+    returning_user: true,
+    week: { sessions: 0, movement_minutes: 0, active_days: 0, streak_days: 0, favourite_goal: null },
+    total_completed_sessions: 0,
+    last_session: null
+  };
+  progressSummary.returning_user = true;
+  progressSummary.week ||= {};
+  const minutes = Math.round(Math.max(0, Number(elapsed || 0)) / 60);
+  progressSummary.week.movement_minutes = Number(progressSummary.week.movement_minutes || 0) + minutes;
+  progressSummary.week.streak_days = Math.max(1, Number(progressSummary.week.streak_days || 0));
+  progressSummary.week.active_days = Math.max(1, Number(progressSummary.week.active_days || 0));
+
+  if (status === "completed") {
+    progressSummary.week.sessions = Number(progressSummary.week.sessions || 0) + 1;
+    progressSummary.total_completed_sessions = Number(progressSummary.total_completed_sessions || 0) + 1;
+    progressSummary.last_session = {
+      duration_minutes: duration,
+      goal,
+      equipment: run?.equipment || null,
+      completed_at: new Date().toISOString()
+    };
+  }
+
+  const pack = getOfflinePack();
+  if (pack) {
+    pack.summary = progressSummary;
+    writeJson(OFFLINE_PACK_KEY, pack);
+  }
+}
+
+function queueOfflineRun(status, payload = {}) {
+  if (!run?.offline || !run.run_id) return;
+  const queue = getOfflineQueue();
+  const existing = queue.find(item => item.run_id === run.run_id);
+  const item = existing || {
+    run_id: run.run_id,
+    duration,
+    goal,
+    equipment: run.equipment,
+    started_at: run.offline_started_at || new Date().toISOString(),
+    skips: []
+  };
+
+  item.status = status;
+  item.elapsed_seconds = Math.max(0, Math.round(Number(payload.elapsed_seconds || 0)));
+  item.ended_at = new Date().toISOString();
+  item.skips = Array.isArray(run.offline_skips) ? run.offline_skips : item.skips || [];
+
+  const next = queue.filter(entry => entry.run_id !== item.run_id);
+  next.push(item);
+  setOfflineQueue(next);
+  updateOfflineProgress(status, item.elapsed_seconds);
+}
+
+function updateQueuedFeedback(runId, feedback) {
+  const queue = getOfflineQueue();
+  const item = queue.find(entry => entry.run_id === runId);
+  if (!item) return;
+  item.feedback = feedback;
+  setOfflineQueue(queue);
+}
+
+async function offlineApi(action, payload = {}) {
+  const pack = getOfflinePack();
+  if (!pack) return null;
+
+  if (run?.offline && payload.run_id === run.run_id) {
+    if (action === "session_started") {
+      run.offline_started_at = new Date().toISOString();
+      return { ok: true, offline: true };
+    }
+    if (action === "movement_skipped") {
+      run.offline_skips ||= [];
+      run.offline_skips.push({
+        movement_index: Number(payload.movement_index || 0),
+        movement_label: String(payload.movement_label || "")
+      });
+      return { ok: true, offline: true };
+    }
+    if (action === "session_completed" || action === "session_stopped") {
+      queueOfflineRun(action === "session_completed" ? "completed" : "stopped", payload);
+      return { ok: true, offline: true, queued: true };
+    }
+    if (action === "feedback") {
+      updateQueuedFeedback(run.run_id, payload.feedback);
+      return { ok: true, offline: true, queued: true };
+    }
+  }
+
+  if (action === "scan") {
+    return { ok: true, kit: pack.kit, summary: progressSummary || pack.summary || null, offline: true };
+  }
+  if (action === "device_summary") {
+    return { ok: true, summary: progressSummary || pack.summary || null, offline: true };
+  }
+  if (action === "select_time") return { ok: true, offline: true };
+
+  if (action === "preview_session") {
+    const session = cachedSession(payload.duration, payload.goal, payload.equipment);
+    return session ? { ok: true, ...session, offline: true } : null;
+  }
+
+  if (action === "select_goal") {
+    const session = cachedSession(payload.duration, payload.goal, payload.equipment || null);
+    if (!session) return null;
+    return {
+      ok: true,
+      ...session,
+      run_id: crypto.randomUUID(),
+      offline: true,
+      offline_started_at: null,
+      offline_skips: []
+    };
+  }
+
+  return null;
+}
+
+async function api(action, payload = {}) {
+  if (run?.offline && payload.run_id === run.run_id) {
+    const local = await offlineApi(action, payload);
+    if (local) return local;
+  }
+
+  if (!navigator.onLine) {
+    const local = await offlineApi(action, payload);
+    if (local) return local;
+    throw new Error("This MOVA session is not available offline yet. Reconnect once to download the kit.");
+  }
+
+  try {
+    return await networkApi(action, payload);
+  } catch (error) {
+    if (error?.movaNetwork) {
+      const local = await offlineApi(action, payload);
+      if (local) return local;
+    }
+    throw error;
+  }
+}
+
+async function warmOfflinePack() {
+  if (!navigator.onLine || !token) return;
+  try {
+    const pack = await networkApi("offline_pack");
+    writeJson(OFFLINE_PACK_KEY, { ...pack, token });
+  } catch (_) {}
+}
+
+async function flushOfflineQueue() {
+  if (syncInFlight || !navigator.onLine || !token) return;
+  const queue = getOfflineQueue();
+  if (!queue.length) {
+    updateNetworkStatus();
+    return;
+  }
+
+  syncInFlight = true;
+  updateNetworkStatus();
+
+  const remaining = [];
+  for (const item of queue) {
+    try {
+      await networkApi("offline_session_sync", { offline_session: item });
+    } catch (_) {
+      remaining.push(item);
+    }
+  }
+
+  setOfflineQueue(remaining);
+  if (!remaining.length) {
+    try {
+      const data = await networkApi("device_summary");
+      progressSummary = data.summary || progressSummary;
+      const pack = getOfflinePack();
+      if (pack) {
+        pack.summary = progressSummary;
+        writeJson(OFFLINE_PACK_KEY, pack);
+      }
+    } catch (_) {}
+  }
+
+  syncInFlight = false;
+  updateNetworkStatus();
+}
+
+function updateNetworkStatus() {
+  const el = document.getElementById("network-status");
+  if (!el) return;
+  const queued = getOfflineQueue().length;
+
+  if (!navigator.onLine) {
+    el.hidden = false;
+    el.className = "network-status offline";
+    el.textContent = queued ? `Offline · ${queued} session${queued === 1 ? "" : "s"} waiting to sync` : "Offline mode";
+    return;
+  }
+
+  if (syncInFlight) {
+    el.hidden = false;
+    el.className = "network-status syncing";
+    el.textContent = "Syncing MOVA…";
+    return;
+  }
+
+  if (queued) {
+    el.hidden = false;
+    el.className = "network-status syncing";
+    el.textContent = `${queued} session${queued === 1 ? "" : "s"} waiting to sync`;
+    return;
+  }
+
+  el.hidden = true;
+}
+
+async function requestInstall() {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  try { await installPrompt.userChoice; } catch (_) {}
+  installPrompt = null;
+}
+
+function registerPwa() {
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("./sw.js").catch(() => {});
+  }
+
+  window.addEventListener("beforeinstallprompt", event => {
+    event.preventDefault();
+    installPrompt = event;
+    if (progressSummary?.returning_user && phase === "idle") renderHome();
+  });
+
+  window.addEventListener("appinstalled", () => {
+    installPrompt = null;
+  });
+
+  window.addEventListener("online", () => {
+    updateNetworkStatus();
+    flushOfflineQueue();
+    warmOfflinePack();
+  });
+
+  window.addEventListener("offline", updateNetworkStatus);
+  updateNetworkStatus();
 }
 
 function render(html) { app.innerHTML = html; }
@@ -68,8 +394,13 @@ async function boot() {
   try {
     const data = await api("scan");
     kit = data.kit;
-    progressSummary = data.summary || null;
+    progressSummary = data.summary || getOfflinePack()?.summary || null;
     footer.textContent = `${kit.code} · MOVA`;
+    updateNetworkStatus();
+    if (navigator.onLine) {
+      warmOfflinePack();
+      flushOfflineQueue();
+    }
     if (progressSummary?.returning_user) renderHome();
     else renderTime();
   } catch (error) {
@@ -131,11 +462,13 @@ function renderHome() {
     <div class="action-stack home-actions">
       <button class="primary-btn" id="home-start">Start a session</button>
       <button class="secondary-btn" id="home-progress">My progress</button>
+      ${installPrompt ? '<button class="text-btn" id="install-mova">Install MOVA</button>' : ""}
     </div>
   `);
 
   document.getElementById("home-start").addEventListener("click", renderTime);
   document.getElementById("home-progress").addEventListener("click", renderProgress);
+  if (installPrompt) document.getElementById("install-mova")?.addEventListener("click", requestInstall);
 }
 
 function renderProgress() {
@@ -952,4 +1285,5 @@ document.addEventListener("visibilitychange", async () => {
   }
 });
 
+registerPwa();
 boot();
