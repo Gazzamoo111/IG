@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MOVA Showcase</title>
+<style>
+:root{--bg:#111315;--panel:#171A1C;--line:#2B3033;--text:#F4F1E8;--lime:#C8FF31}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg);font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+body{display:grid;place-items:center}
+.frame{position:relative;width:100%;height:100%;overflow:hidden;background:
+radial-gradient(circle at 50% 26%,rgba(200,255,49,.13),transparent 19%),
+linear-gradient(160deg,#222729 0%,#15181A 52%,#0D0F10 100%)}
+.frame:before{content:"";position:absolute;inset:0;background:
+linear-gradient(90deg,transparent 0 11%,rgba(255,255,255,.025) 11% 11.4%,transparent 11.4% 88.6%,rgba(255,255,255,.02) 88.6% 89%,transparent 89%),
+linear-gradient(0deg,rgba(0,0,0,.25),transparent 28%);pointer-events:none}
+.grid{position:absolute;inset:auto 0 0;height:34%;opacity:.13;background-image:
+linear-gradient(rgba(200,255,49,.25) 1px,transparent 1px),
+linear-gradient(90deg,rgba(200,255,49,.2) 1px,transparent 1px);background-size:48px 48px;transform:perspective(260px) rotateX(62deg);transform-origin:bottom}
+.accent{position:absolute;left:7%;top:8%;width:7px;height:25%;border-radius:999px;background:linear-gradient(var(--lime),rgba(200,255,49,.05));opacity:.72}
+.label{position:absolute;left:6%;bottom:5%;z-index:5}
+.label strong{display:block;color:var(--text);font-size:13px;letter-spacing:.02em}
+.label span{display:block;margin-top:5px;color:var(--lime);font-size:8px;font-weight:900;letter-spacing:.16em}
+svg{position:absolute;inset:1% 3% 2%;width:94%;height:97%;overflow:visible}
+.shadow{fill:#050607;opacity:.55}
+.body-light{stroke:url(#limb);stroke-linecap:round;fill:none}
+.joint{fill:#D6DBDA}
+.head{fill:url(#skin)}
+.torso{fill:url(#shirt);stroke:#33393C;stroke-width:2}
+.short{fill:#101315;stroke:#31373A;stroke-width:2}
+.shoe{fill:#090B0C;stroke:#33383A;stroke-width:2}
+.band{stroke:var(--lime);stroke-width:8;stroke-linecap:round;fill:none;opacity:.9}
+.handle{stroke:#D9DEDC;stroke-width:10;stroke-linecap:round}
+</style>
+</head>
+<body>
+<div class="frame">
+  <div class="grid"></div>
+  <div class="accent"></div>
+  <div class="label"><strong>Concept movement visual</strong><span>MOVA SHOWCASE</span></div>
+  <svg viewBox="0 0 540 675" role="img" aria-label="MOVA concept exercise presenter">
+    <defs>
+      <linearGradient id="shirt" x1="0" x2="1"><stop stop-color="#090B0C"/><stop offset=".55" stop-color="#202427"/><stop offset="1" stop-color="#0B0D0E"/></linearGradient>
+      <linearGradient id="limb" x1="0" x2="1"><stop stop-color="#CBD0CF"/><stop offset=".45" stop-color="#7C8586"/><stop offset="1" stop-color="#E3E6E5"/></linearGradient>
+      <radialGradient id="skin"><stop stop-color="#D9D1C6"/><stop offset="1" stop-color="#A99F95"/></radialGradient>
+    </defs>
+    <ellipse class="shadow" cx="270" cy="606" rx="130" ry="19"/>
+    <g id="equipment"></g>
+    <g id="figure"></g>
+  </svg>
+</div>
+<script>
+const p=new URLSearchParams(location.search);
+const move=(p.get("move")||"row").toLowerCase();
+const easy=(p.get("variant")||"standard")==="easier";
+const phases=[0,.5,1,.5,0], times="0;0.25;0.5;0.75;1";
+const R=n=>Math.round(n*10)/10;
+
+function pose(type,t){
+  const a=easy?.58:1;
+  t*=a;
+  const j={
+    head:[270,104],neck:[270,150],ls:[229,181],rs:[311,181],
+    le:[210,268],re:[330,268],lw:[205,351],rw:[335,351],
+    lh:[246,332],rh:[294,332],lk:[239,458],rk:[301,458],
+    la:[228,576],ra:[312,576]
+  };
+  const shift=(dx,dy,keys)=>keys.forEach(k=>j[k]=[j[k][0]+dx,j[k][1]+dy]);
+  const set=(k,x,y)=>j[k]=[x,y];
+
+  if(type==="squat"){
+    const d=92*t;
+    shift(0,d*.52,["head","neck","ls","rs","le","re","lw","rw"]);
+    shift(0,d*.70,["lh","rh"]);
+    set("lk",220-7*t,458+d*.30); set("rk",320+7*t,458+d*.30);
+    set("lw",212,348-d*.12); set("rw",328,348-d*.12);
+  } else if(type==="row"){
+    shift(30*t,42*t,["head","neck","ls","rs","lh","rh"]);
+    set("le",220,267-28*t); set("re",320,267-28*t);
+    set("lw",228,350-102*t); set("rw",312,350-102*t);
+    set("lk",238,458+14*t); set("rk",302,458+14*t);
+  } else if(type==="curl"){
+    set("le",214,270); set("re",326,270);
+    set("lw",205+34*t,350-122*t); set("rw",335-34*t,350-122*t);
+  } else if(type==="chest_press"){
+    set("le",226-16*t,260-18*t); set("re",314+16*t,260-18*t);
+    set("lw",230-92*t,282-35*t); set("rw",310+92*t,282-35*t);
+  }
+  return j;
+}
+
+const frames=phases.map(x=>pose(move,x));
+const vals=(k,a)=>frames.map(f=>R(f[k][a])).join(";");
+const anim=(attr,v)=>'<animate attributeName="'+attr+'" values="'+v+'" keyTimes="'+times+'" dur="4.6s" repeatCount="indefinite" calcMode="spline" keySplines=".42 0 .58 1;.42 0 .58 1;.42 0 .58 1;.42 0 .58 1"/>';
+
+function line(a,b,w){
+  const f=frames[0];
+  return '<line class="body-light" x1="'+f[a][0]+'" y1="'+f[a][1]+'" x2="'+f[b][0]+'" y2="'+f[b][1]+'" stroke-width="'+w+'">'+
+    anim("x1",vals(a,0))+anim("y1",vals(a,1))+anim("x2",vals(b,0))+anim("y2",vals(b,1))+'</line>';
+}
+function circle(k,r,cls="joint"){
+  const f=frames[0];
+  return '<circle class="'+cls+'" cx="'+f[k][0]+'" cy="'+f[k][1]+'" r="'+r+'">'+anim("cx",vals(k,0))+anim("cy",vals(k,1))+'</circle>';
+}
+function quad(a,b,c,d,cls){
+  const first=frames[0];
+  const pointStrings=frames.map(f=>[a,b,c,d].map(k=>f[k][0]+","+f[k][1]).join(" ")).join(";");
+  return '<polygon class="'+cls+'" points="'+[a,b,c,d].map(k=>first[k][0]+","+first[k][1]).join(" ")+'">'+anim("points",pointStrings)+'</polygon>';
+}
+
+function equipment(){
+  const f=frames[0];
+  const leftAnchor=move==="chest_press"?[175,310]:[218,585];
+  const rightAnchor=move==="chest_press"?[365,310]:[322,585];
+  const leftA=frames.map(()=>leftAnchor[0]).join(";"), leftB=frames.map(()=>leftAnchor[1]).join(";");
+  const rightA=frames.map(()=>rightAnchor[0]).join(";"), rightB=frames.map(()=>rightAnchor[1]).join(";");
+  return '<line class="band" x1="'+leftAnchor[0]+'" y1="'+leftAnchor[1]+'" x2="'+f.lw[0]+'" y2="'+f.lw[1]+'">'+
+    anim("x1",leftA)+anim("y1",leftB)+anim("x2",vals("lw",0))+anim("y2",vals("lw",1))+'</line>'+
+    '<line class="band" x1="'+rightAnchor[0]+'" y1="'+rightAnchor[1]+'" x2="'+f.rw[0]+'" y2="'+f.rw[1]+'">'+
+    anim("x1",rightA)+anim("y1",rightB)+anim("x2",vals("rw",0))+anim("y2",vals("rw",1))+'</line>'+
+    '<line class="handle" x1="'+(f.lw[0]-8)+'" y1="'+f.lw[1]+'" x2="'+(f.lw[0]+8)+'" y2="'+f.lw[1]+'">'+anim("x1",frames.map(v=>R(v.lw[0]-8)).join(";"))+anim("y1",vals("lw",1))+anim("x2",frames.map(v=>R(v.lw[0]+8)).join(";"))+anim("y2",vals("lw",1))+'</line>'+
+    '<line class="handle" x1="'+(f.rw[0]-8)+'" y1="'+f.rw[1]+'" x2="'+(f.rw[0]+8)+'" y2="'+f.rw[1]+'">'+anim("x1",frames.map(v=>R(v.rw[0]-8)).join(";"))+anim("y1",vals("rw",1))+anim("x2",frames.map(v=>R(v.rw[0]+8)).join(";"))+anim("y2",vals("rw",1))+'</line>';
+}
+
+const fig =
+  line("ls","le",28)+line("le","lw",25)+line("rs","re",28)+line("re","rw",25)+
+  line("lh","lk",36)+line("lk","la",32)+line("rh","rk",36)+line("rk","ra",32)+
+  quad("ls","rs","rh","lh","torso")+
+  circle("head",31,"head")+circle("lw",8)+circle("rw",8)+
+  '<ellipse class="shoe" cx="'+frames[0].la[0]+'" cy="'+frames[0].la[1]+'" rx="24" ry="10">'+anim("cx",vals("la",0))+anim("cy",vals("la",1))+'</ellipse>'+
+  '<ellipse class="shoe" cx="'+frames[0].ra[0]+'" cy="'+frames[0].ra[1]+'" rx="24" ry="10">'+anim("cx",vals("ra",0))+anim("cy",vals("ra",1))+'</ellipse>';
+
+document.getElementById("figure").innerHTML=fig;
+document.getElementById("equipment").innerHTML=equipment();
+</script>
+</body>
+</html>
