@@ -626,3 +626,33 @@ h1 {
   .progress-card{min-height:92px;padding:13px 8px}
   .progress-card strong{font-size:26px}
 }
+
+
+/* PWA / offline status */
+.network-status{
+  position:fixed;
+  z-index:1000;
+  top:max(8px, env(safe-area-inset-top));
+  left:50%;
+  transform:translateX(-50%);
+  max-width:calc(100vw - 28px);
+  padding:9px 13px;
+  border:1px solid var(--line);
+  border-radius:999px;
+  background:rgba(23,25,27,.94);
+  color:#D6DADC;
+  box-shadow:0 8px 28px rgba(0,0,0,.28);
+  backdrop-filter:blur(10px);
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.02em;
+  text-align:center;
+}
+.network-status.offline{
+  border-color:#6B5730;
+  color:#F4DFA5;
+}
+.network-status.syncing{
+  border-color:#5C6C2C;
+  color:var(--lime);
+}
