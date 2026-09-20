@@ -180,6 +180,174 @@ async function templateFor(duration: number, goal: string, equipment: string) {
   return { template, steps, contentReady };
 }
 
+
+async function offlinePackForKit(kit: any) {
+  const available = availableEquipment(kit);
+  const { data: templates, error: templateError } = await db.from("mova_session_templates")
+    .select("id,title,level,metadata,duration_minutes,goal,equipment")
+    .eq("active", true)
+    .in("equipment", available)
+    .order("duration_minutes", { ascending: true });
+
+  if (templateError) throw templateError;
+  const ids = (templates || []).map((t: any) => t.id);
+  if (!ids.length) return [];
+
+  const selectFields =
+    "session_template_id,step_order,duration_seconds,transition_seconds,cue_override," +
+    "movement:mova_movements!movement_id(id,code,name,short_cue,easier_name,easier_cue,demo_asset_url,easier_demo_asset_url)," +
+    "alternate:mova_movements!alternate_movement_id(id,code,name,short_cue,demo_asset_url)";
+
+  const { data: steps, error: stepsError } = await db.from("mova_session_steps")
+    .select(selectFields)
+    .in("session_template_id", ids)
+    .order("step_order", { ascending: true });
+
+  if (stepsError) throw stepsError;
+
+  const grouped = new Map<string, any[]>();
+  for (const step of steps || []) {
+    const item = {
+      order: step.step_order,
+      duration_seconds: step.duration_seconds,
+      transition_seconds: step.transition_seconds,
+      name: step.movement?.name || "",
+      cue: step.cue_override || step.movement?.short_cue || "",
+      easier_name: step.movement?.easier_name || null,
+      easier_cue: step.movement?.easier_cue || null,
+      demo_asset_url: step.movement?.demo_asset_url || null,
+      easier_demo_asset_url: step.movement?.easier_demo_asset_url || null,
+      alternate: step.alternate ? {
+        name: step.alternate.name,
+        cue: step.alternate.short_cue,
+        demo_asset_url: step.alternate.demo_asset_url
+      } : null
+    };
+    if (!grouped.has(step.session_template_id)) grouped.set(step.session_template_id, []);
+    grouped.get(step.session_template_id)!.push(item);
+  }
+
+  return (templates || []).map((template: any) => {
+    const sessionSteps = grouped.get(template.id) || [];
+    return {
+      template_id: template.id,
+      duration: template.duration_minutes,
+      goal: template.goal,
+      equipment: template.equipment,
+      equipment_label: equipmentLabel(template.equipment),
+      title: template.title,
+      level: template.level || 1,
+      content_ready: Boolean(template.metadata?.content_status === "ready" && sessionSteps.length > 0),
+      steps: sessionSteps
+    };
+  });
+}
+
+function safeClientDate(value: unknown, fallback: string) {
+  if (typeof value !== "string") return fallback;
+  const ms = Date.parse(value);
+  if (!Number.isFinite(ms)) return fallback;
+  const now = Date.now();
+  if (ms > now + 5 * 60 * 1000 || ms < now - 7 * 24 * 60 * 60 * 1000) return fallback;
+  return new Date(ms).toISOString();
+}
+
+async function syncOfflineSession(kit: any, deviceId: string, raw: any) {
+  const runId = String(raw?.run_id || "");
+  if (!validUuid(runId)) throw new Error("Invalid offline run");
+
+  const { data: existing, error: existingError } = await db.from("mova_session_runs")
+    .select("id,status")
+    .eq("id", runId)
+    .eq("kit_id", kit.id)
+    .eq("device_id", deviceId)
+    .maybeSingle();
+  if (existingError) throw existingError;
+  if (existing) return { ok: true, already_synced: true, run_id: existing.id };
+
+  const duration = Number(raw?.duration);
+  const goal = String(raw?.goal || "");
+  const equipment = String(raw?.equipment || "");
+  const status = String(raw?.status || "");
+  const invalid = validateSelection(duration, goal);
+  if (invalid) throw new Error(invalid);
+  if (!["completed", "stopped"].includes(status)) throw new Error("Invalid offline session status");
+  if (!availableEquipment(kit).includes(equipment)) throw new Error("Equipment is not available in this kit");
+
+  const loaded = await templateFor(duration, goal, equipment);
+  if (!loaded) throw new Error("Session not found");
+
+  const nowIso = new Date().toISOString();
+  const startedAt = safeClientDate(raw?.started_at, nowIso);
+  const endedAt = safeClientDate(raw?.ended_at, nowIso);
+  const elapsedRaw = Number(raw?.elapsed_seconds || 0);
+  const elapsed = Number.isFinite(elapsedRaw)
+    ? Math.max(0, Math.min(duration * 60, Math.round(elapsedRaw)))
+    : 0;
+  const feedback = ["too_easy", "about_right", "too_hard"].includes(String(raw?.feedback || ""))
+    ? String(raw.feedback)
+    : null;
+  const skips = Array.isArray(raw?.skips) ? raw.skips.slice(0, 20) : [];
+
+  const { error: runError } = await db.from("mova_session_runs").insert({
+    id: runId,
+    kit_id: kit.id,
+    device_id: deviceId,
+    session_template_id: loaded.template.id,
+    duration_minutes: duration,
+    goal,
+    equipment,
+    status,
+    feedback,
+    elapsed_seconds: elapsed,
+    started_at: startedAt,
+    completed_at: status === "completed" ? endedAt : null,
+    metadata: {
+      offline_synced: true,
+      client_ended_at: endedAt,
+      content_ready: loaded.contentReady
+    }
+  });
+  if (runError) throw runError;
+
+  await logEvent(kit.id, deviceId, "time_selected", { duration, offline_sync: true }, runId);
+  await logEvent(kit.id, deviceId, "goal_selected", { duration, goal, offline_sync: true }, runId);
+  await logEvent(
+    kit.id,
+    deviceId,
+    "session_loaded",
+    { equipment, template_id: loaded.template.id, content_ready: loaded.contentReady, offline_sync: true },
+    runId
+  );
+  await logEvent(kit.id, deviceId, "session_started", { offline_sync: true }, runId);
+
+  for (const skip of skips) {
+    await logEvent(
+      kit.id,
+      deviceId,
+      "movement_skipped",
+      {
+        movement_index: Math.max(0, Math.round(Number(skip?.movement_index || 0))),
+        movement_label: String(skip?.movement_label || "").slice(0, 120),
+        offline_sync: true
+      },
+      runId
+    );
+  }
+
+  if (status === "completed") {
+    await logEvent(kit.id, deviceId, "session_completed", { elapsed_seconds: elapsed, offline_sync: true }, runId);
+  } else {
+    await logEvent(kit.id, deviceId, "session_stopped", { elapsed_seconds: elapsed, offline_sync: true }, runId);
+  }
+
+  if (feedback) {
+    await logEvent(kit.id, deviceId, "feedback_submitted", { feedback, offline_sync: true }, runId);
+  }
+
+  return { ok: true, run_id: runId };
+}
+
 function validateSelection(duration: number, goal: string) {
   if (![3,5,10].includes(duration)) return "Invalid duration";
   if (!["loosen_up","get_moving","get_stronger","whole_body"].includes(goal)) return "Invalid goal";
@@ -358,6 +526,33 @@ Deno.serve(async (req: Request) => {
 
     if (action === "device_summary") {
       return json({ ok: true, summary: await deviceSummary(deviceId) });
+    }
+
+    if (action === "offline_pack") {
+      const [sessions, summary] = await Promise.all([
+        offlinePackForKit(kit),
+        deviceSummary(deviceId)
+      ]);
+      return json({
+        ok: true,
+        generated_at: new Date().toISOString(),
+        kit: {
+          code: kit.kit_code,
+          equipment: {
+            bar: kit.has_bar,
+            handle_band: kit.has_handle_band,
+            mini_band: kit.has_mini_band,
+            bodyweight: true
+          }
+        },
+        summary,
+        sessions
+      });
+    }
+
+    if (action === "offline_session_sync") {
+      const result = await syncOfflineSession(kit, deviceId, body.offline_session || {});
+      return json(result);
     }
 
     if (action === "select_time") {
